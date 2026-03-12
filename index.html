@@ -3,301 +3,279 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart POS 2026 - NextGen Retail</title>
+    <title>SmartPOS 2026 | Cloud Inventory</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
-        body { font-family: 'Prompt', sans-serif; background-color: #f8fafc; }
-        .glass-effect { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
-        .product-card:hover { transform: translateY(-4px); transition: all 0.3s ease; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+        .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1.5rem; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        [x-cloak] { display: none !important; }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body x-data="posSystem()" x-init="initData()">
 
-    <header class="h-16 border-b bg-white flex items-center justify-between px-6 shrink-0">
-        <div class="flex items-center gap-2">
-            <div class="bg-indigo-600 p-2 rounded-lg text-white">
-                <i data-lucide="layout-grid"></i>
-            </div>
-            <h1 class="text-xl font-semibold text-gray-800">Smart POS <span class="text-indigo-600">2026</span></h1>
+    <aside class="fixed left-0 top-0 h-screen w-20 bg-slate-900 text-white flex flex-col items-center py-8 gap-8 z-50">
+        <div class="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center mb-4">
+            <i class="fas fa-bolt text-xl"></i>
         </div>
-        <div class="flex items-center gap-4 w-1/3">
-            <div class="relative w-full">
-                <i data-lucide="search" class="absolute left-3 top-2.5 text-gray-400 w-5 h-5"></i>
-                <input type="text" id="searchInput" placeholder="ค้นหาสินค้าหรือสแกนบาร์โค้ด..." 
-                    class="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all">
-            </div>
-        </div>
-        <div class="text-right">
-            <p id="clock" class="text-sm font-medium text-gray-500"></p>
-        </div>
-    </header>
+        <button @click="view = 'pos'" :class="view === 'pos' ? 'bg-indigo-500/20 text-indigo-400' : 'text-slate-500'" class="w-12 h-12 rounded-xl transition-all hover:bg-slate-800">
+            <i class="fas fa-th-large"></i>
+        </button>
+        <button @click="view = 'inventory'" :class="view === 'inventory' ? 'bg-indigo-500/20 text-indigo-400' : 'text-slate-500'" class="w-12 h-12 rounded-xl transition-all hover:bg-slate-800">
+            <i class="fas fa-box"></i>
+        </button>
+        <button @click="view = 'history'" :class="view === 'history' ? 'bg-indigo-500/20 text-indigo-400' : 'text-slate-500'" class="w-12 h-12 rounded-xl transition-all hover:bg-slate-800">
+            <i class="fas fa-history"></i>
+        </button>
+    </aside>
 
-    <main class="flex flex-1 overflow-hidden">
-        <section class="flex-1 p-6 overflow-y-auto">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-lg font-medium text-gray-700">รายการสินค้า</h2>
-                <div id="categoryFilter" class="flex gap-2">
-                    <button class="px-4 py-1.5 rounded-full bg-indigo-600 text-white text-sm">ทั้งหมด</button>
+    <main class="ml-20 p-8 grid grid-cols-12 gap-8 h-screen overflow-hidden">
+        
+        <section class="col-span-8 h-full flex flex-col overflow-hidden">
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-slate-800" x-text="view === 'pos' ? 'Terminal One' : (view === 'inventory' ? 'Inventory Control' : 'Sales History')"></h1>
+                    <p class="text-slate-500 text-sm">Update: <span x-text="lastUpdate"></span></p>
+                </div>
+                <div class="flex gap-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" x-model="searchQuery" placeholder="Search products..." class="pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl w-64 focus:ring-2 ring-indigo-500 outline-none transition-all">
+                    </div>
+                    <button @click="fetchData()" class="px-4 py-3 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all">
+                        <i class="fas fa-sync" :class="loading ? 'animate-spin' : ''"></i>
+                    </button>
+                </div>
+            </header>
+
+            <template x-if="loading">
+                <div class="flex-1 flex flex-col items-center justify-center text-slate-400">
+                    <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p>Fetching data from Google Sheets...</p>
+                </div>
+            </template>
+
+            <div x-show="view === 'pos' && !loading" class="flex-1 overflow-y-auto hide-scrollbar pb-10">
+                <div class="product-grid">
+                    <template x-for="item in filteredProducts" :key="item.id">
+                        <div @click="addToCart(item)" class="group bg-white p-4 rounded-3xl border border-slate-100 hover:border-indigo-200 transition-all cursor-pointer hover:shadow-xl hover:shadow-indigo-500/5 relative overflow-hidden">
+                            <div class="aspect-square bg-slate-50 rounded-2xl mb-4 flex items-center justify-center text-3xl overflow-hidden">
+                                <img :src="item.image || 'https://via.placeholder.com/150?text=Product'" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
+                            </div>
+                            <h3 class="font-bold text-slate-800 truncate" x-text="item.name"></h3>
+                            <p class="text-indigo-600 font-bold mt-1">฿<span x-text="formatNumber(item.price)"></span></p>
+                            <div class="mt-2 flex items-center gap-2">
+                                <span class="text-[10px] px-2 py-1 bg-slate-100 rounded-full text-slate-500" x-text="'Stock: ' + item.stock"></span>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
-            
-            <div id="loading" class="flex flex-col items-center justify-center h-64">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-                <p class="mt-4 text-gray-500">กำลังโหลดข้อมูลจาก Google Sheets...</p>
-            </div>
 
-            <div id="productGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 hidden">
-                </div>
+            <div x-show="view === 'inventory'" class="flex-1 bg-white rounded-3xl border border-slate-100 overflow-hidden flex flex-col">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm uppercase">
+                        <tr>
+                            <th class="p-4">SKU/ID</th>
+                            <th class="p-4">Product Name</th>
+                            <th class="p-4 text-right">Unit Price</th>
+                            <th class="p-4 text-center">In Stock</th>
+                            <th class="p-4 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        <template x-for="item in products">
+                            <tr>
+                                <td class="p-4 font-mono text-xs text-slate-400" x-text="item.id"></td>
+                                <td class="p-4 font-semibold text-slate-700" x-text="item.name"></td>
+                                <td class="p-4 text-right font-bold text-indigo-600">฿<span x-text="formatNumber(item.price)"></span></td>
+                                <td class="p-4 text-center" x-text="item.stock"></td>
+                                <td class="p-4 text-center">
+                                    <span :class="item.stock > 10 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'" 
+                                          class="px-3 py-1 rounded-full text-xs font-medium" 
+                                          x-text="item.stock > 10 ? 'Healthy' : 'Low Stock'"></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
-        <aside class="w-96 bg-white border-l flex flex-col shadow-xl">
-            <div class="p-4 border-b flex justify-between items-center bg-gray-50">
-                <h3 class="font-semibold text-gray-700 flex items-center gap-2">
-                    <i data-lucide="shopping-cart" class="w-5 h-5"></i> ตะกร้าสินค้า
-                </h3>
-                <button onclick="clearCart()" class="text-sm text-red-500 hover:bg-red-50 px-2 py-1 rounded">ล้างทั้งหมด</button>
+        <section class="col-span-4 h-full bg-white rounded-[40px] border border-slate-100 shadow-2xl shadow-slate-200/50 p-6 flex flex-col">
+            <h2 class="text-xl font-bold text-slate-800 mb-6 flex items-center justify-between">
+                Current Order
+                <span class="text-sm font-normal text-slate-400" x-text="cart.length + ' items'"></span>
+            </h2>
+
+            <div class="flex-1 overflow-y-auto hide-scrollbar mb-6">
+                <template x-if="cart.length === 0">
+                    <div class="h-full flex flex-col items-center justify-center text-slate-300">
+                        <i class="fas fa-shopping-basket text-5xl mb-4"></i>
+                        <p>Cart is empty</p>
+                    </div>
+                </template>
+                
+                <div class="space-y-4">
+                    <template x-for="(item, index) in cart" :key="index">
+                        <div class="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl">
+                            <div class="w-12 h-12 bg-white rounded-xl flex-shrink-0 flex items-center justify-center font-bold text-indigo-500 shadow-sm" x-text="item.qty"></div>
+                            <div class="flex-1 overflow-hidden">
+                                <p class="font-bold text-slate-800 truncate text-sm" x-text="item.name"></p>
+                                <p class="text-xs text-slate-400">฿<span x-text="formatNumber(item.price * item.qty)"></span></p>
+                            </div>
+                            <div class="flex gap-1">
+                                <button @click="removeFromCart(index)" class="w-8 h-8 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"><i class="fas fa-minus text-xs"></i></button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
             </div>
 
-            <div id="cartItems" class="flex-1 overflow-y-auto p-4 space-y-4">
-                <div id="emptyCart" class="text-center py-20 text-gray-400">
-                    <i data-lucide="shopping-bag" class="w-12 h-12 mx-auto mb-2 opacity-20"></i>
-                    <p>ยังไม่มีสินค้าในตะกร้า</p>
+            <div class="space-y-3 pt-6 border-t border-slate-100">
+                <div class="flex justify-between text-slate-500">
+                    <span>Subtotal</span>
+                    <span class="font-bold">฿<span x-text="formatNumber(cartTotal)"></span></span>
                 </div>
-            </div>
-
-            <div class="p-6 border-t bg-gray-50 space-y-3">
-                <div class="flex justify-between text-gray-600">
-                    <span>ยอดรวม (Subtotal)</span>
-                    <span id="subtotal">฿0.00</span>
+                <div class="flex justify-between text-slate-500">
+                    <span>VAT (7%)</span>
+                    <span class="font-bold">฿<span x-text="formatNumber(cartTotal * 0.07)"></span></span>
                 </div>
-                <div class="flex justify-between text-gray-600">
-                    <span>ภาษี (VAT 7%)</span>
-                    <span id="tax">฿0.00</span>
+                <div class="flex justify-between text-2xl font-black text-slate-800 py-2">
+                    <span>Total</span>
+                    <span>฿<span x-text="formatNumber(cartTotal * 1.07)"></span></span>
                 </div>
-                <div class="flex justify-between text-2xl font-bold text-gray-800 pt-2 border-t">
-                    <span>ยอดสุทธิ</span>
-                    <span id="total" class="text-indigo-600">฿0.00</span>
-                </div>
-                <button onclick="checkout()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-semibold text-lg shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 mt-4">
-                    <i data-lucide="credit-card"></i> ชำระเงิน
+                
+                <button @click="processPayment()" :disabled="cart.length === 0" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95 disabled:opacity-50 disabled:active:scale-100">
+                    Pay with QR / Cash
                 </button>
             </div>
-        </aside>
+        </section>
     </main>
 
-    <div id="receiptModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-scale-up">
-            <div class="p-8 text-center border-b border-dashed">
-                <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i data-lucide="check" class="w-8 h-8"></i>
-                </div>
-                <h3 class="text-xl font-bold text-gray-800">ชำระเงินสำเร็จ!</h3>
-                <p class="text-sm text-gray-500 mt-1">ขอบคุณที่ใช้บริการ Smart POS 2026</p>
-            </div>
-            <div id="receiptContent" class="p-6 space-y-2 text-sm font-mono">
-                </div>
-            <div class="p-6 bg-gray-50 flex gap-3">
-                <button onclick="closeModal()" class="flex-1 py-3 border rounded-xl hover:bg-white transition-all">ปิด</button>
-                <button onclick="window.print()" class="flex-1 py-3 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition-all flex items-center justify-center gap-2">
-                    <i data-lucide="printer" class="w-4 h-4"></i> พิมพ์ใบเสร็จ
-                </button>
-            </div>
-        </div>
+    <div x-show="toast.show" x-cloak x-transition class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl z-[100] flex items-center gap-3">
+        <i class="fas fa-check-circle text-green-400"></i>
+        <span x-text="toast.message"></span>
     </div>
 
     <script>
-        // Configuration
-        const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTaJT9WaWQ7-BDK5vkjQwrcZ9W86RATTgFsgH7dsAfhAOqbpA878B22qCbQVhQu24gZjQvw9MwDedQt/pub?output=csv';
-        
-        let products = [];
-        let cart = [];
+        function posSystem() {
+            return {
+                loading: true,
+                view: 'pos',
+                searchQuery: '',
+                lastUpdate: '',
+                products: [],
+                cart: [],
+                toast: { show: false, message: '' },
+                sheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTaJT9WaWQ7-BDK5vkjQwrcZ9W86RATTgFsgH7dsAfhAOqbpA878B22qCbQVhQu24gZjQvw9MwDedQt/pub?output=csv',
 
-        // Initialize Lucide Icons
-        lucide.createIcons();
+                initData() {
+                    this.fetchData();
+                    // Auto-refresh every 5 minutes
+                    setInterval(() => this.fetchData(), 300000);
+                },
 
-        // Update Clock
-        setInterval(() => {
-            const now = new Date();
-            document.getElementById('clock').textContent = now.toLocaleString('th-TH', { 
-                dateStyle: 'medium', timeStyle: 'medium' 
-            });
-        }, 1000);
+                async fetchData() {
+                    this.loading = true;
+                    try {
+                        const response = await fetch(this.sheetUrl);
+                        const csvText = await response.text();
+                        
+                        Papa.parse(csvText, {
+                            header: true,
+                            complete: (results) => {
+                                // แปลงข้อมูลให้เข้ากับ Schema ของเรา
+                                this.products = results.data.map((row, index) => ({
+                                    id: row.ID || row.id || index,
+                                    name: row.Name || row.name || 'Unnamed Product',
+                                    price: parseFloat(row.Price || row.price || 0),
+                                    stock: parseInt(row.Stock || row.stock || 0),
+                                    image: row.Image || row.image || null,
+                                    category: row.Category || row.category || 'General'
+                                }));
+                                this.lastUpdate = new Date().toLocaleTimeString();
+                                this.loading = false;
+                                this.showToast('Inventory Synced!');
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Fetch error:', error);
+                        this.loading = false;
+                        alert('Failed to load data from Google Sheets');
+                    }
+                },
 
-        // Fetch Data from Google Sheets
-        async function fetchProducts() {
-            try {
-                const response = await fetch(SHEET_URL);
-                const data = await response.text();
-                
-                // Simple CSV Parser
-                const rows = data.split('\n').slice(1); // Skip header
-                products = rows.map((row, index) => {
-                    const cols = row.split(',');
-                    // Mapping columns: 0=ID, 1=Name, 2=Category, 3=Price, 4=ImageURL
-                    return {
-                        id: cols[0]?.trim() || index,
-                        name: cols[1]?.trim() || 'ไม่มีชื่อสินค้า',
-                        category: cols[2]?.trim() || 'ทั่วไป',
-                        price: parseFloat(cols[3]) || 0,
-                        image: cols[4]?.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop'
-                    };
-                }).filter(p => p.name !== 'ไม่มีชื่อสินค้า');
+                get filteredProducts() {
+                    if (!this.searchQuery) return this.products;
+                    return this.products.filter(p => 
+                        p.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                        p.id.toString().includes(this.searchQuery)
+                    );
+                },
 
-                renderProducts(products);
-                document.getElementById('loading').classList.add('hidden');
-                document.getElementById('productGrid').classList.remove('hidden');
-            } catch (error) {
-                console.error('Error fetching data:', error);
-                alert('ไม่สามารถโหลดข้อมูลสินค้าได้');
+                get cartTotal() {
+                    return this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+                },
+
+                addToCart(product) {
+                    if (product.stock <= 0) {
+                        this.showToast('Out of stock!');
+                        return;
+                    }
+
+                    const existing = this.cart.find(item => item.id === product.id);
+                    if (existing) {
+                        if (existing.qty < product.stock) {
+                            existing.qty++;
+                        } else {
+                            this.showToast('Max stock reached');
+                        }
+                    } else {
+                        this.cart.push({ ...product, qty: 1 });
+                    }
+                },
+
+                removeFromCart(index) {
+                    if (this.cart[index].qty > 1) {
+                        this.cart[index].qty--;
+                    } else {
+                        this.cart.splice(index, 1);
+                    }
+                },
+
+                processPayment() {
+                    // ในระบบจริง จะมีการตัดสต็อกผ่าน API ไปยัง Google Sheets Apps Script
+                    // สำหรับตัวอย่างนี้ เราจะตัดสต็อกใน Memory ชั่วคราว
+                    this.cart.forEach(cartItem => {
+                        const product = this.products.find(p => p.id === cartItem.id);
+                        if (product) product.stock -= cartItem.qty;
+                    });
+
+                    this.cart = [];
+                    this.showToast('Sale Completed! Stock updated.');
+                    this.view = 'inventory';
+                    setTimeout(() => this.view = 'pos', 1500);
+                },
+
+                showToast(msg) {
+                    this.toast.message = msg;
+                    this.toast.show = true;
+                    setTimeout(() => this.toast.show = false, 3000);
+                },
+
+                formatNumber(num) {
+                    return new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2 }).format(num);
+                }
             }
         }
-
-        // Render Product Cards
-        function renderProducts(items) {
-            const grid = document.getElementById('productGrid');
-            grid.innerHTML = items.map(product => `
-                <div onclick="addToCart('${product.id}')" class="product-card bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer hover:shadow-md">
-                    <img src="${product.image}" class="w-full h-32 object-cover rounded-xl mb-3 bg-gray-50" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">
-                    <p class="text-xs text-indigo-500 font-medium uppercase mb-1">${product.category}</p>
-                    <h3 class="font-medium text-gray-800 truncate">${product.name}</h3>
-                    <p class="text-lg font-bold text-gray-900 mt-1">฿${product.price.toLocaleString()}</p>
-                </div>
-            `).join('');
-        }
-
-        // Search Functionality
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            const filtered = products.filter(p => 
-                p.name.toLowerCase().includes(term) || 
-                p.category.toLowerCase().includes(term)
-            );
-            renderProducts(filtered);
-        });
-
-        // Cart Logic
-        function addToCart(id) {
-            const product = products.find(p => p.id === id);
-            const existing = cart.find(item => item.id === id);
-
-            if (existing) {
-                existing.quantity += 1;
-            } else {
-                cart.push({ ...product, quantity: 1 });
-            }
-            updateCartUI();
-        }
-
-        function removeFromCart(id) {
-            cart = cart.filter(item => item.id !== id);
-            updateCartUI();
-        }
-
-        function updateQuantity(id, delta) {
-            const item = cart.find(i => i.id === id);
-            if (item) {
-                item.quantity += delta;
-                if (item.quantity <= 0) removeFromCart(id);
-            }
-            updateCartUI();
-        }
-
-        function clearCart() {
-            if (confirm('ยืนยันการล้างตะกร้าสินค้า?')) {
-                cart = [];
-                updateCartUI();
-            }
-        }
-
-        function updateCartUI() {
-            const container = document.getElementById('cartItems');
-            const emptyMsg = document.getElementById('emptyCart');
-            
-            if (cart.length === 0) {
-                container.innerHTML = '';
-                container.appendChild(emptyMsg);
-            } else {
-                container.innerHTML = cart.map(item => `
-                    <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
-                        <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
-                        <div class="flex-1">
-                            <h4 class="text-sm font-medium text-gray-800 truncate w-32">${item.name}</h4>
-                            <p class="text-xs text-gray-500">฿${item.price.toLocaleString()}</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="updateQuantity('${item.id}', -1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-500">-</button>
-                            <span class="text-sm font-semibold w-4 text-center">${item.quantity}</span>
-                            <button onclick="updateQuantity('${item.id}', 1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-500">+</button>
-                        </div>
-                    </div>
-                `).join('');
-            }
-
-            // Calculations
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const tax = subtotal * 0.07;
-            const total = subtotal + tax;
-
-            document.getElementById('subtotal').textContent = `฿${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('tax').textContent = `฿${tax.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById('total').textContent = `฿${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            
-            lucide.createIcons();
-        }
-
-        // Checkout & Modal
-        function checkout() {
-            if (cart.length === 0) return alert('ตะกร้าว่างเปล่า!');
-            
-            const content = document.getElementById('receiptContent');
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const tax = subtotal * 0.07;
-            const total = subtotal + tax;
-
-            let itemsHtml = cart.map(item => `
-                <div class="flex justify-between">
-                    <span>${item.name} x${item.quantity}</span>
-                    <span>฿${(item.price * item.quantity).toLocaleString()}</span>
-                </div>
-            `).join('');
-
-            content.innerHTML = `
-                <div class="text-center mb-4">
-                    <p class="font-bold">TAX INVOICE / RECEIPT</p>
-                    <p>No: #POS-${Date.now().toString().slice(-6)}</p>
-                    <p>${new Date().toLocaleString('th-TH')}</p>
-                </div>
-                <hr class="border-dashed my-2">
-                ${itemsHtml}
-                <hr class="border-dashed my-2">
-                <div class="flex justify-between font-bold text-lg">
-                    <span>ยอดรวมสุทธิ</span>
-                    <span>฿${total.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                </div>
-                <div class="text-xs text-center mt-6 text-gray-400">
-                    <p>Cashier: System Admin</p>
-                    <p>Smart POS 2026 Cloud Service</p>
-                </div>
-            `;
-
-            document.getElementById('receiptModal').classList.remove('hidden');
-            document.getElementById('receiptModal').classList.add('flex');
-        }
-
-        function closeModal() {
-            document.getElementById('receiptModal').classList.add('hidden');
-            document.getElementById('receiptModal').classList.remove('flex');
-            cart = [];
-            updateCartUI();
-        }
-
-        // Start the app
-        fetchProducts();
-
     </script>
 </body>
 </html>
