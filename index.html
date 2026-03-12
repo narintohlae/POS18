@@ -2,453 +2,302 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ULTIMATE POS 2026 | Enterprise Suite</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart POS 2026 - NextGen Retail</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
     <style>
-        :root { --primary: #2563eb; --success: #10b981; --glass: rgba(255, 255, 255, 0.9); }
-        body { font-family: 'Anuphan', 'Inter', sans-serif; background-color: #f1f5f9; height: 100vh; overflow: hidden; color: #1e293b; }
-        .glass-panel { background: var(--glass); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.4); }
-        .sidebar-item.active { background: white; color: var(--primary); shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.1); }
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        @media print { .no-print { display: none !important; } #receipt-print { display: block !important; } }
-        #receipt-print { display: none; width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; }
-        #reader { width: 100%; border-radius: 20px; overflow: hidden; border: none !important; }
+        body { font-family: 'Prompt', sans-serif; background-color: #f8fafc; }
+        .glass-effect { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+        .product-card:hover { transform: translateY(-4px); transition: all 0.3s ease; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="flex">
+<body class="h-screen flex flex-col overflow-hidden">
 
-    <aside class="w-20 lg:w-64 bg-slate-50 border-r border-slate-200 flex flex-col p-4 z-20 transition-all no-print">
-        <div class="flex items-center gap-3 px-2 mb-10">
-            <div class="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-200">
-                <i data-lucide="shield-check"></i>
+    <header class="h-16 border-b bg-white flex items-center justify-between px-6 shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="bg-indigo-600 p-2 rounded-lg text-white">
+                <i data-lucide="layout-grid"></i>
             </div>
-            <span class="font-black text-xl hidden lg:block tracking-tighter uppercase">Next<span class="text-blue-600">POS</span></span>
+            <h1 class="text-xl font-semibold text-gray-800">Smart POS <span class="text-indigo-600">2026</span></h1>
         </div>
-
-        <nav class="flex-1 space-y-2">
-            <button onclick="switchTab('pos')" id="btn-pos" class="sidebar-item active w-full p-4 rounded-2xl flex items-center gap-4 transition-all">
-                <i data-lucide="shopping-cart"></i><span class="font-bold hidden lg:block text-sm">ขายหน้าร้าน</span>
-            </button>
-            <button onclick="switchTab('dashboard')" id="btn-dashboard" class="sidebar-item w-full p-4 rounded-2xl flex items-center gap-4 text-slate-500 hover:bg-white transition-all">
-                <i data-lucide="bar-chart-big"></i><span class="font-bold hidden lg:block text-sm">แดชบอร์ด</span>
-            </button>
-            <button onclick="switchTab('stock')" id="btn-stock" class="sidebar-item w-full p-4 rounded-2xl flex items-center gap-4 text-slate-500 hover:bg-white transition-all">
-                <i data-lucide="layers"></i><span class="font-bold hidden lg:block text-sm">สต็อกสินค้า</span>
-            </button>
-            <button onclick="switchTab('history')" id="btn-history" class="sidebar-item w-full p-4 rounded-2xl flex items-center gap-4 text-slate-500 hover:bg-white transition-all">
-                <i data-lucide="receipt"></i><span class="font-bold hidden lg:block text-sm">ประวัติขาย</span>
-            </button>
-        </nav>
-        
-        <div class="mt-auto p-4 bg-blue-50 rounded-3xl hidden lg:block">
-            <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Inventory</p>
-            <p id="db-stat" class="text-lg font-black text-blue-700">0 รายการ</p>
+        <div class="flex items-center gap-4 w-1/3">
+            <div class="relative w-full">
+                <i data-lucide="search" class="absolute left-3 top-2.5 text-gray-400 w-5 h-5"></i>
+                <input type="text" id="searchInput" placeholder="ค้นหาสินค้าหรือสแกนบาร์โค้ด..." 
+                    class="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all">
+            </div>
         </div>
-    </aside>
+        <div class="text-right">
+            <p id="clock" class="text-sm font-medium text-gray-500"></p>
+        </div>
+    </header>
 
-    <div class="flex-1 flex flex-col overflow-hidden">
-        
-        <header class="h-20 glass-panel border-b border-slate-200 px-8 flex items-center justify-between no-print">
-            <div class="flex-1 max-w-2xl flex items-center gap-4">
-                <div class="flex-1 relative">
-                    <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"></i>
-                    <input type="text" id="searchInput" placeholder="ชื่อสินค้า หรือ สแกนบาร์โค้ด..." 
-                        class="w-full bg-slate-100 border-none rounded-2xl py-3 pl-12 pr-4 outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all">
+    <main class="flex flex-1 overflow-hidden">
+        <section class="flex-1 p-6 overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-medium text-gray-700">รายการสินค้า</h2>
+                <div id="categoryFilter" class="flex gap-2">
+                    <button class="px-4 py-1.5 rounded-full bg-indigo-600 text-white text-sm">ทั้งหมด</button>
                 </div>
-                <button onclick="toggleScanner()" class="p-3 bg-white border border-slate-200 rounded-2xl hover:bg-blue-50 hover:text-blue-600 transition-all">
-                    <i data-lucide="camera" class="w-5 h-5"></i>
-                </button>
             </div>
             
-            <div class="flex items-center gap-6 ml-4">
-                <div class="text-right hidden sm:block">
-                    <p id="clock" class="text-lg font-black text-slate-800 leading-none"></p>
-                    <p class="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1">● Online Mode</p>
+            <div id="loading" class="flex flex-col items-center justify-center h-64">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                <p class="mt-4 text-gray-500">กำลังโหลดข้อมูลจาก Google Sheets...</p>
+            </div>
+
+            <div id="productGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 hidden">
                 </div>
-                <button onclick="fetchData()" class="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all group">
-                    <i data-lucide="refresh-cw" id="syncIcon" class="w-5 h-5 text-slate-600 group-hover:rotate-180 transition-transform duration-500"></i>
+        </section>
+
+        <aside class="w-96 bg-white border-l flex flex-col shadow-xl">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+                <h3 class="font-semibold text-gray-700 flex items-center gap-2">
+                    <i data-lucide="shopping-cart" class="w-5 h-5"></i> ตะกร้าสินค้า
+                </h3>
+                <button onclick="clearCart()" class="text-sm text-red-500 hover:bg-red-50 px-2 py-1 rounded">ล้างทั้งหมด</button>
+            </div>
+
+            <div id="cartItems" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div id="emptyCart" class="text-center py-20 text-gray-400">
+                    <i data-lucide="shopping-bag" class="w-12 h-12 mx-auto mb-2 opacity-20"></i>
+                    <p>ยังไม่มีสินค้าในตะกร้า</p>
+                </div>
+            </div>
+
+            <div class="p-6 border-t bg-gray-50 space-y-3">
+                <div class="flex justify-between text-gray-600">
+                    <span>ยอดรวม (Subtotal)</span>
+                    <span id="subtotal">฿0.00</span>
+                </div>
+                <div class="flex justify-between text-gray-600">
+                    <span>ภาษี (VAT 7%)</span>
+                    <span id="tax">฿0.00</span>
+                </div>
+                <div class="flex justify-between text-2xl font-bold text-gray-800 pt-2 border-t">
+                    <span>ยอดสุทธิ</span>
+                    <span id="total" class="text-indigo-600">฿0.00</span>
+                </div>
+                <button onclick="checkout()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-semibold text-lg shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 mt-4">
+                    <i data-lucide="credit-card"></i> ชำระเงิน
                 </button>
             </div>
-        </header>
+        </aside>
+    </main>
 
-        <main id="view-pos" class="flex-1 flex overflow-hidden tab-content">
-            <section class="flex-1 flex flex-col p-6 overflow-hidden">
-                <div id="categoryBar" class="flex gap-2 mb-6 overflow-x-auto pb-2 custom-scrollbar"></div>
-                <div id="scanner-wrap" class="hidden mb-6 bg-black rounded-3xl overflow-hidden relative">
-                    <div id="reader"></div>
-                    <button onclick="toggleScanner()" class="absolute top-4 right-4 bg-white/20 p-2 rounded-full text-white backdrop-blur-md">
-                        <i data-lucide="x"></i>
-                    </button>
+    <div id="receiptModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-scale-up">
+            <div class="p-8 text-center border-b border-dashed">
+                <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="check" class="w-8 h-8"></i>
                 </div>
-                <div id="productGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto pr-2 custom-scrollbar"></div>
-            </section>
-
-            <aside class="w-80 lg:w-[400px] bg-white border-l border-slate-200 flex flex-col shadow-2xl no-print">
-                <div class="p-6 border-b border-slate-100 flex justify-between items-center">
-                    <h2 class="font-black text-lg">ORDER #<span id="order-id">...</span></h2>
-                    <button onclick="clearCart()" class="text-[10px] font-black text-red-500 bg-red-50 px-3 py-2 rounded-xl uppercase tracking-widest">Clear</button>
+                <h3 class="text-xl font-bold text-gray-800">ชำระเงินสำเร็จ!</h3>
+                <p class="text-sm text-gray-500 mt-1">ขอบคุณที่ใช้บริการ Smart POS 2026</p>
+            </div>
+            <div id="receiptContent" class="p-6 space-y-2 text-sm font-mono">
                 </div>
-                <div id="cartItems" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar"></div>
-                <div class="p-8 bg-slate-50 border-t border-slate-200 space-y-4">
-                    <div class="flex justify-between font-bold text-slate-400 text-sm italic"><span>Subtotal</span><span id="subtotal">฿0.00</span></div>
-                    <div class="flex justify-between items-end">
-                        <span class="font-black text-slate-800 uppercase tracking-tighter">Total Due</span>
-                        <span id="totalDisplay" class="text-5xl font-black text-blue-600 tracking-tighter">฿0.00</span>
-                    </div>
-                    <button onclick="openPayment()" class="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[28px] font-black text-xl shadow-xl shadow-blue-100 active:scale-95 transition-all">CHECKOUT</button>
-                </div>
-            </aside>
-        </main>
-
-        <main id="view-dashboard" class="hidden flex-1 p-8 overflow-y-auto tab-content bg-slate-50">
-            <div class="flex justify-between items-center mb-8">
-                <h2 class="text-3xl font-black">Sales Dashboard</h2>
-                <button onclick="exportHistory()" class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition-all">
-                    <i data-lucide="download" class="w-4 h-4"></i> Export CSV (Excel)
+            <div class="p-6 bg-gray-50 flex gap-3">
+                <button onclick="closeModal()" class="flex-1 py-3 border rounded-xl hover:bg-white transition-all">ปิด</button>
+                <button onclick="window.print()" class="flex-1 py-3 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition-all flex items-center justify-center gap-2">
+                    <i data-lucide="printer" class="w-4 h-4"></i> พิมพ์ใบเสร็จ
                 </button>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
-                    <p class="text-slate-400 font-bold text-xs uppercase mb-1">ยอดขายสุทธิวันนี้</p>
-                    <h3 id="dash-sales" class="text-4xl font-black text-slate-900">฿0.00</h3>
-                </div>
-                <div class="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
-                    <p class="text-slate-400 font-bold text-xs uppercase mb-1">จำนวนการขาย</p>
-                    <h3 id="dash-count" class="text-4xl font-black text-blue-600">0</h3>
-                </div>
-                <div class="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
-                    <p class="text-slate-400 font-bold text-xs uppercase mb-1">กำไรสะสม</p>
-                    <h3 id="dash-profit" class="text-4xl font-black text-emerald-500">฿0.00</h3>
-                </div>
-            </div>
-            <div class="bg-white p-10 rounded-[48px] shadow-sm border border-slate-100">
-                <h4 class="font-black text-slate-800 mb-8 flex items-center gap-2"><i data-lucide="line-chart"></i> Hourly Sales Performance</h4>
-                <canvas id="salesChart" height="120"></canvas>
-            </div>
-        </main>
-
-        <main id="view-stock" class="hidden flex-1 p-8 overflow-y-auto tab-content">
-            <h2 class="text-3xl font-black mb-8">Inventory & Profit Analysis</h2>
-            <div class="bg-white rounded-[40px] shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-left">
-                    <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-black">
-                        <tr>
-                            <th class="p-6">รหัสสินค้า / บาร์โค้ด</th>
-                            <th class="p-6">ชื่อการค้า</th>
-                            <th class="p-6">ต้นทุน</th>
-                            <th class="p-6">ราคาขาย</th>
-                            <th class="p-6">กำไรสุทธิ</th>
-                            <th class="p-6 text-right">มาร์จิ้น (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="stockTable" class="divide-y divide-slate-100 font-medium"></tbody>
-                </table>
-            </div>
-        </main>
-
-        <main id="view-history" class="hidden flex-1 p-8 overflow-y-auto tab-content">
-            <h2 class="text-3xl font-black mb-8">Transaction History</h2>
-            <div id="historyList" class="grid gap-4"></div>
-        </main>
-    </div>
-
-    <div id="payModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-[48px] w-full max-w-lg p-12 shadow-2xl border border-white/20">
-            <div class="text-center mb-10">
-                <p class="text-slate-400 font-bold uppercase text-xs tracking-widest mb-2">Total Amount</p>
-                <h2 id="modalTotal" class="text-7xl font-black text-slate-900 tracking-tighter">฿0.00</h2>
-            </div>
-            <div class="space-y-6">
-                <div>
-                    <label class="block text-sm font-bold text-slate-500 mb-3 ml-2">เงินที่รับมา</label>
-                    <input type="number" id="cashInput" placeholder="0.00" 
-                        class="w-full text-5xl p-8 bg-slate-50 border-none rounded-[32px] text-center font-black focus:ring-4 focus:ring-blue-100 outline-none transition-all">
-                </div>
-                <div class="flex justify-between items-center bg-blue-50 p-8 rounded-[32px] border border-blue-100">
-                    <span class="text-blue-600 font-bold text-xl uppercase tracking-widest">Change</span>
-                    <span id="changeDisplay" class="text-4xl font-black text-blue-700">฿0.00</span>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <button onclick="closePayment()" class="py-5 bg-slate-100 text-slate-600 rounded-[28px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Cancel</button>
-                    <button id="confirmBtn" onclick="processSale()" class="py-5 bg-blue-600 text-white rounded-[28px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 disabled:opacity-30 transition-all">Finalize Bill</button>
-                </div>
             </div>
         </div>
-    </div>
-
-    <div id="receipt-print">
-        <center>
-            <h2 style="margin:0">NEXT POS ULTIMATE</h2>
-            <p style="font-size:10px">Bangkok Retail Co., Ltd.</p>
-            <p>===============================</p>
-        </center>
-        <div id="receipt-body"></div>
-        <p>===============================</p>
-        <div id="receipt-footer" style="font-weight:bold"></div>
-        <center>
-            <p>===============================</p>
-            <p id="receipt-time"></p>
-            <p>THANK YOU - ขอบคุณที่ใช้บริการ</p>
-        </center>
     </div>
 
     <script>
-        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTaJT9WaWQ7-BDK5vkjQwrcZ9W86RATTgFsgH7dsAfhAOqbpA878B22qCbQVhQu24gZjQvw9MwDedQt/pub?output=csv';
+        // Configuration
+        const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTaJT9WaWQ7-BDK5vkjQwrcZ9W86RATTgFsgH7dsAfhAOqbpA878B22qCbQVhQu24gZjQvw9MwDedQt/pub?output=csv';
         
-        let inventory = [], cart = [], currentCategory = null, scanner = null;
-        let history = JSON.parse(localStorage.getItem('pos_h_2026') || '[]');
-        let salesChart = null;
+        let products = [];
+        let cart = [];
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchData();
-            updateClock();
-            setInterval(updateClock, 1000);
-            lucide.createIcons();
-            
-            document.getElementById('searchInput').focus();
-            document.getElementById('searchInput').addEventListener('input', (e) => renderProducts(e.target.value));
-            document.getElementById('cashInput').addEventListener('input', updateChange);
-            document.getElementById('order-id').innerText = Date.now().toString().slice(-6);
-        });
+        // Initialize Lucide Icons
+        lucide.createIcons();
 
-        // Data Management
-        async function fetchData() {
-            const icon = document.getElementById('syncIcon');
-            icon.classList.add('animate-spin');
-            try {
-                const res = await fetch(CSV_URL);
-                const text = await res.text();
-                parseCSV(text);
-                document.getElementById('db-stat').innerText = `${inventory.length} รายการ`;
-                renderCategories();
-                renderProducts();
-            } catch (err) { alert('Sync Failed: กรุณาเช็คอินเทอร์เน็ต'); }
-            finally { icon.classList.remove('animate-spin'); }
-        }
-
-        function parseCSV(csv) {
-            const lines = csv.split('\n').filter(l => l.trim());
-            const headers = lines[0].split(',').map(h => h.trim());
-            inventory = lines.slice(1).map(line => {
-                const cols = line.split(',');
-                let d = {}; headers.forEach((h, i) => d[h] = cols[i]?.trim());
-                return {
-                    id: d['รหัสสินค้า'] || d['บาร์โค้ด'],
-                    name: d['ชื่อการค้า'] || 'ไม่ระบุชื่อ',
-                    unit: d['หน่วย'] || 'ชิ้น',
-                    barcode: d['บาร์โค้ด'] || '',
-                    price: parseFloat(d['ราคา']) || 0,
-                    cost: parseFloat(d['ต้นทุน']) || 0,
-                    category: d['หมวดหมู่'] || 'ทั่วไป',
-                    img: `https://ui-avatars.com/api/?name=${encodeURIComponent(d['ชื่อการค้า'])}&background=random&color=fff&size=128`
-                };
+        // Update Clock
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').textContent = now.toLocaleString('th-TH', { 
+                dateStyle: 'medium', timeStyle: 'medium' 
             });
+        }, 1000);
+
+        // Fetch Data from Google Sheets
+        async function fetchProducts() {
+            try {
+                const response = await fetch(SHEET_URL);
+                const data = await response.text();
+                
+                // Simple CSV Parser
+                const rows = data.split('\n').slice(1); // Skip header
+                products = rows.map((row, index) => {
+                    const cols = row.split(',');
+                    // Mapping columns: 0=ID, 1=Name, 2=Category, 3=Price, 4=ImageURL
+                    return {
+                        id: cols[0]?.trim() || index,
+                        name: cols[1]?.trim() || 'ไม่มีชื่อสินค้า',
+                        category: cols[2]?.trim() || 'ทั่วไป',
+                        price: parseFloat(cols[3]) || 0,
+                        image: cols[4]?.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop'
+                    };
+                }).filter(p => p.name !== 'ไม่มีชื่อสินค้า');
+
+                renderProducts(products);
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('productGrid').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                alert('ไม่สามารถโหลดข้อมูลสินค้าได้');
+            }
         }
 
-        // POS Operations
-        function renderCategories() {
-            const cats = [...new Set(inventory.map(p => p.category))];
-            document.getElementById('categoryBar').innerHTML = cats.map(c => `
-                <button onclick="setCategory('${c}')" class="px-6 py-2.5 rounded-2xl font-bold text-sm transition-all whitespace-nowrap border-2
-                    ${currentCategory === c ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}">${c}</button>
-            `).join('');
-        }
-
-        function setCategory(cat) {
-            currentCategory = (currentCategory === cat) ? null : cat;
-            renderCategories();
-            renderProducts(document.getElementById('searchInput').value);
-        }
-
-        function renderProducts(search = '') {
+        // Render Product Cards
+        function renderProducts(items) {
             const grid = document.getElementById('productGrid');
-            if (!search && !currentCategory) {
-                grid.innerHTML = `<div class="col-span-full py-24 flex flex-col items-center opacity-20"><i data-lucide="package-search" class="w-20 h-20 mb-4"></i><p class="font-black text-xl uppercase tracking-widest">READY TO SCAN</p></div>`;
-                lucide.createIcons(); return;
-            }
-
-            const filtered = inventory.filter(p => 
-                (p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode === search) && 
-                (!currentCategory || p.category === currentCategory)
-            );
-
-            if (search && filtered.length === 1 && filtered[0].barcode === search) {
-                addToCart(filtered[0].id);
-                document.getElementById('searchInput').value = '';
-                return;
-            }
-
-            grid.innerHTML = filtered.slice(0, 40).map(p => `
-                <div onclick="addToCart('${p.id}')" class="bg-white p-4 rounded-[32px] border border-slate-50 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group">
-                    <img src="${p.img}" class="w-full aspect-square rounded-[24px] mb-4 object-cover">
-                    <p class="text-[10px] text-blue-500 font-black mb-1 uppercase">${p.unit}</p>
-                    <h3 class="font-bold text-slate-800 text-xs line-clamp-2 h-8 mb-2">${p.name}</h3>
-                    <div class="flex items-center justify-between"><span class="text-lg font-black tracking-tighter">฿${p.price.toLocaleString()}</span><div class="w-8 h-8 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all"><i data-lucide="plus" class="w-4 h-4"></i></div></div>
+            grid.innerHTML = items.map(product => `
+                <div onclick="addToCart('${product.id}')" class="product-card bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer hover:shadow-md">
+                    <img src="${product.image}" class="w-full h-32 object-cover rounded-xl mb-3 bg-gray-50" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">
+                    <p class="text-xs text-indigo-500 font-medium uppercase mb-1">${product.category}</p>
+                    <h3 class="font-medium text-gray-800 truncate">${product.name}</h3>
+                    <p class="text-lg font-bold text-gray-900 mt-1">฿${product.price.toLocaleString()}</p>
                 </div>
             `).join('');
-            lucide.createIcons();
         }
 
+        // Search Functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = products.filter(p => 
+                p.name.toLowerCase().includes(term) || 
+                p.category.toLowerCase().includes(term)
+            );
+            renderProducts(filtered);
+        });
+
+        // Cart Logic
         function addToCart(id) {
-            const p = inventory.find(i => i.id === id);
-            const inCart = cart.find(c => c.id === id);
-            if (inCart) inCart.qty++; else cart.push({ ...p, qty: 1 });
+            const product = products.find(p => p.id === id);
+            const existing = cart.find(item => item.id === id);
+
+            if (existing) {
+                existing.quantity += 1;
+            } else {
+                cart.push({ ...product, quantity: 1 });
+            }
             updateCartUI();
         }
 
-        function updateCartUI() {
-            const list = document.getElementById('cartItems'), total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-            document.getElementById('totalDisplay').innerText = `฿${total.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-            document.getElementById('subtotal').innerText = `฿${total.toLocaleString()}`;
-            list.innerHTML = cart.map(item => `
-                <div class="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
-                    <div class="flex-1 min-w-0"><h4 class="font-bold text-xs truncate">${item.name}</h4><p class="text-[10px] font-black text-blue-600">฿${item.price.toLocaleString()} x ${item.qty}</p></div>
-                    <div class="flex items-center gap-2 bg-white rounded-xl p-1 shadow-sm border border-slate-100"><button onclick="qty('${item.id}',-1)" class="w-7 h-7 hover:bg-slate-50 rounded-lg">-</button><span class="text-xs font-black w-4 text-center">${item.qty}</span><button onclick="qty('${item.id}',1)" class="w-7 h-7 hover:bg-slate-50 rounded-lg">+</button></div>
-                </div>
-            `).join('');
+        function removeFromCart(id) {
+            cart = cart.filter(item => item.id !== id);
+            updateCartUI();
         }
 
-        function qty(id, delta) {
-            const i = cart.find(c => c.id === id);
-            if(i) { i.qty += delta; if(i.qty <=0) cart = cart.filter(c => c.id !== id); updateCartUI(); }
+        function updateQuantity(id, delta) {
+            const item = cart.find(i => i.id === id);
+            if (item) {
+                item.quantity += delta;
+                if (item.quantity <= 0) removeFromCart(id);
+            }
+            updateCartUI();
         }
 
-        function clearCart() { cart = []; updateCartUI(); }
-
-        // Checkout & Payment
-        function openPayment() {
-            if(!cart.length) return;
-            document.getElementById('modalTotal').innerText = document.getElementById('totalDisplay').innerText;
-            document.getElementById('payModal').classList.remove('hidden');
-            setTimeout(() => document.getElementById('cashInput').focus(), 100);
-        }
-
-        function updateChange() {
-            const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-            const cash = parseFloat(document.getElementById('cashInput').value) || 0;
-            const change = cash - total;
-            document.getElementById('changeDisplay').innerText = `฿${(change > 0 ? change : 0).toLocaleString(undefined, {minimumFractionDigits:2})}`;
-            document.getElementById('confirmBtn').disabled = cash < total;
-        }
-
-        function closePayment() { document.getElementById('payModal').classList.add('hidden'); document.getElementById('cashInput').value = ''; }
-
-        function processSale() {
-            const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-            const cost = cart.reduce((sum, i) => sum + (i.cost * i.qty), 0);
-            const cash = parseFloat(document.getElementById('cashInput').value);
-            const orderNo = 'INV-' + Date.now().toString().slice(-6);
-
-            const txn = { id: orderNo, timestamp: new Date().toISOString(), items: [...cart], total, cost, profit: total - cost, cash, change: cash - total };
-            history.unshift(txn); localStorage.setItem('pos_h_2026', JSON.stringify(history.slice(0, 500)));
-
-            // Receipt Build
-            document.getElementById('receipt-body').innerHTML = cart.map(i => `<div style="display:flex; justify-content:space-between"><span>${i.name} x${i.qty}</span><span>${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
-            document.getElementById('receipt-footer').innerHTML = `<div style="display:flex; justify-content:space-between"><span>TOTAL</span><span>฿${total.toLocaleString()}</span></div><div style="display:flex; justify-content:space-between; font-size:10px"><span>CASH/CHANGE</span><span>${cash}/${cash-total}</span></div>`;
-            document.getElementById('receipt-time').innerText = new Date().toLocaleString();
-
-            window.print();
-            alert('ชำระเงินสำเร็จ!');
-            cart = []; updateCartUI(); closePayment();
-            document.getElementById('order-id').innerText = Date.now().toString().slice(-6);
-        }
-
-        // Dashboard & Analytics
-        function renderDashboard() {
-            const today = new Date().toLocaleDateString();
-            const todayTxns = history.filter(h => new Date(h.timestamp).toLocaleDateString() === today);
-            
-            const sales = todayTxns.reduce((s, t) => s + t.total, 0);
-            const profit = todayTxns.reduce((s, t) => s + t.profit, 0);
-            
-            document.getElementById('dash-sales').innerText = `฿${sales.toLocaleString()}`;
-            document.getElementById('dash-count').innerText = todayTxns.length;
-            document.getElementById('dash-profit').innerText = `฿${profit.toLocaleString()}`;
-
-            const hourly = new Array(24).fill(0);
-            todayTxns.forEach(t => hourly[new Date(t.timestamp).getHours()] += t.total);
-
-            if(salesChart) salesChart.destroy();
-            salesChart = new Chart(document.getElementById('salesChart'), {
-                type: 'line',
-                data: { labels: Array.from({length:24}, (_,i)=>`${i}:00`), datasets: [{ label: 'Sales', data: hourly, borderColor: '#2563eb', tension: 0.4, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.05)' }] },
-                options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { display: false } }, x: { grid: { display: false } } } }
-            });
-        }
-
-        function renderStock() {
-            document.getElementById('stockTable').innerHTML = inventory.map(p => {
-                const profit = p.price - p.cost;
-                const margin = ((profit / p.price) * 100).toFixed(1);
-                return `<tr><td class="p-6 text-slate-400 font-bold">${p.id}</td><td class="p-6 font-bold">${p.name}</td><td class="p-6">฿${p.cost}</td><td class="p-6 font-bold text-blue-600">฿${p.price}</td><td class="p-6 text-emerald-500 font-bold">฿${profit}</td><td class="p-6 text-right font-black">${margin}%</td></tr>`;
-            }).join('');
-        }
-
-        function renderHistory() {
-            document.getElementById('historyList').innerHTML = history.map(h => `
-                <div class="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100 flex justify-between items-center">
-                    <div><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${new Date(h.timestamp).toLocaleString()}</p><h4 class="font-black text-slate-800">${h.id}</h4></div>
-                    <div class="text-right"><h3 class="text-xl font-black text-blue-600">฿${h.total.toLocaleString()}</h3><p class="text-[10px] font-bold text-emerald-500">Profit ฿${h.profit.toLocaleString()}</p></div>
-                </div>
-            `).join('');
-        }
-
-        // Export Function
-        function exportHistory() {
-            const csvContent = "data:text/csv;charset=utf-8,BillID,Date,Total,Cost,Profit\n" + 
-                history.map(h => `${h.id},${h.timestamp},${h.total},${h.cost},${h.profit}`).join("\n");
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `sales_report_${new Date().toLocaleDateString()}.csv`);
-            document.body.appendChild(link);
-            link.click();
-        }
-
-        // Scanner Logic
-        function toggleScanner() {
-            const wrap = document.getElementById('scanner-wrap');
-            if(wrap.classList.contains('hidden')) {
-                wrap.classList.remove('hidden');
-                scanner = new Html5Qrcode("reader");
-                scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
-                    (decodedText) => {
-                        document.getElementById('searchInput').value = decodedText;
-                        renderProducts(decodedText);
-                        toggleScanner(); // Close after scan
-                    }
-                );
-            } else {
-                wrap.classList.add('hidden');
-                if(scanner) scanner.stop();
+        function clearCart() {
+            if (confirm('ยืนยันการล้างตะกร้าสินค้า?')) {
+                cart = [];
+                updateCartUI();
             }
         }
 
-        // Utility
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
-            document.getElementById(`view-${tab}`).classList.remove('hidden');
-            if(tab === 'pos') document.getElementById(`view-pos`).classList.add('flex');
-            document.getElementById(`btn-${tab}`).classList.add('active');
-            if(tab === 'dashboard') renderDashboard();
-            if(tab === 'stock') renderStock();
-            if(tab === 'history') renderHistory();
+        function updateCartUI() {
+            const container = document.getElementById('cartItems');
+            const emptyMsg = document.getElementById('emptyCart');
+            
+            if (cart.length === 0) {
+                container.innerHTML = '';
+                container.appendChild(emptyMsg);
+            } else {
+                container.innerHTML = cart.map(item => `
+                    <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
+                        <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
+                        <div class="flex-1">
+                            <h4 class="text-sm font-medium text-gray-800 truncate w-32">${item.name}</h4>
+                            <p class="text-xs text-gray-500">฿${item.price.toLocaleString()}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="updateQuantity('${item.id}', -1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-500">-</button>
+                            <span class="text-sm font-semibold w-4 text-center">${item.quantity}</span>
+                            <button onclick="updateQuantity('${item.id}', 1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-500">+</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Calculations
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const tax = subtotal * 0.07;
+            const total = subtotal + tax;
+
+            document.getElementById('subtotal').textContent = `฿${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('tax').textContent = `฿${tax.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('total').textContent = `฿${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            
             lucide.createIcons();
         }
 
-        function updateClock() {
-            const now = new Date();
-            document.getElementById('clock').innerText = now.toLocaleTimeString('th-TH', { hour12: false });
+        // Checkout & Modal
+        function checkout() {
+            if (cart.length === 0) return alert('ตะกร้าว่างเปล่า!');
+            
+            const content = document.getElementById('receiptContent');
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const tax = subtotal * 0.07;
+            const total = subtotal + tax;
+
+            let itemsHtml = cart.map(item => `
+                <div class="flex justify-between">
+                    <span>${item.name} x${item.quantity}</span>
+                    <span>฿${(item.price * item.quantity).toLocaleString()}</span>
+                </div>
+            `).join('');
+
+            content.innerHTML = `
+                <div class="text-center mb-4">
+                    <p class="font-bold">TAX INVOICE / RECEIPT</p>
+                    <p>No: #POS-${Date.now().toString().slice(-6)}</p>
+                    <p>${new Date().toLocaleString('th-TH')}</p>
+                </div>
+                <hr class="border-dashed my-2">
+                ${itemsHtml}
+                <hr class="border-dashed my-2">
+                <div class="flex justify-between font-bold text-lg">
+                    <span>ยอดรวมสุทธิ</span>
+                    <span>฿${total.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                </div>
+                <div class="text-xs text-center mt-6 text-gray-400">
+                    <p>Cashier: System Admin</p>
+                    <p>Smart POS 2026 Cloud Service</p>
+                </div>
+            `;
+
+            document.getElementById('receiptModal').classList.remove('hidden');
+            document.getElementById('receiptModal').classList.add('flex');
         }
+
+        function closeModal() {
+            document.getElementById('receiptModal').classList.add('hidden');
+            document.getElementById('receiptModal').classList.remove('flex');
+            cart = [];
+            updateCartUI();
+        }
+
+        // Start the app
+        fetchProducts();
+
     </script>
 </body>
 </html>
