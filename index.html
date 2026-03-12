@@ -1,41 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus POS | 2026 Edition</title>
+    <title>Nexus POS 2026 | ระบบจัดการร้านค้า</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Anuphan:wght@300;400;600&display=swap');
         
         body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-family: 'Anuphan', 'Plus Jakarta Sans', sans-serif;
             background: radial-gradient(circle at top left, #f8fafc, #e2e8f0);
             min-height: 100vh;
         }
-
         .glass-card {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
         }
-
-        .active-nav {
-            background: #2563eb;
-            color: white;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-        }
-
-        .custom-scroll::-webkit-scrollbar {
-            width: 6px;
-        }
-        .custom-scroll::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 10px;
-        }
+        .active-nav { background: #2563eb; color: white; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -57,38 +43,34 @@
             </button>
         </nav>
 
-        <main class="flex-1 space-y-6">
+        <main class="flex-1">
             
             <div id="view-pos" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="lg:col-span-2 space-y-6">
                     <div class="flex justify-between items-center">
-                        <h1 class="text-2xl font-bold text-slate-800">Quick Sale</h1>
-                        <input type="text" placeholder="Search products..." class="px-4 py-2 rounded-xl glass-card border-none focus:ring-2 ring-blue-500 w-64 outline-none">
+                        <h1 class="text-2xl font-bold text-slate-800">ขายสินค้า</h1>
+                        <input type="text" id="search-box" oninput="renderProducts()" placeholder="ค้นชื่อสินค้า หรือ บาร์โค้ด..." class="px-5 py-3 rounded-2xl glass-card border-none focus:ring-2 ring-blue-500 w-72 outline-none">
                     </div>
                     
-                    <div id="product-list" class="grid grid-cols-2 md:grid-cols-3 gap-4 custom-scroll overflow-y-auto h-[70vh] pr-2">
+                    <div id="product-list" class="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto h-[75vh] pr-2">
                         </div>
                 </div>
 
                 <div class="lg:col-span-1">
-                    <div class="glass-card rounded-3xl p-6 h-full flex flex-col">
-                        <h2 class="text-xl font-bold text-slate-800 mb-6">Current Order</h2>
-                        
-                        <div id="cart-items" class="flex-1 overflow-y-auto space-y-4 mb-6 pr-2 custom-scroll">
-                            <p class="text-slate-400 text-center py-10">Cart is empty</p>
+                    <div class="glass-card rounded-[2rem] p-6 h-full flex flex-col">
+                        <h2 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <i class="fas fa-receipt text-blue-500"></i> รายการสั่งซื้อ
+                        </h2>
+                        <div id="cart-items" class="flex-1 overflow-y-auto space-y-4 mb-6 pr-2">
+                            <p class="text-slate-400 text-center py-10">ยังไม่มีสินค้าในรถเข็น</p>
                         </div>
-
-                        <div class="border-t border-slate-200 pt-6 space-y-3">
-                            <div class="flex justify-between text-slate-500">
-                                <span>Subtotal</span>
-                                <span id="subtotal">$0.00</span>
+                        <div class="border-t border-slate-100 pt-6 space-y-3">
+                            <div class="flex justify-between text-xl font-bold text-slate-800">
+                                <span>รวมทั้งสิ้น</span>
+                                <span id="total" class="text-blue-600">฿0.00</span>
                             </div>
-                            <div class="flex justify-between text-xl font-bold text-slate-800 pt-2">
-                                <span>Total</span>
-                                <span id="total">$0.00</span>
-                            </div>
-                            <button onclick="processSale()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold transition-all mt-4 transform active:scale-95">
-                                Complete Payment
+                            <button onclick="processSale()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold transition-all mt-4 shadow-lg shadow-blue-200">
+                                ชำระเงิน
                             </button>
                         </div>
                     </div>
@@ -96,26 +78,22 @@
             </div>
 
             <div id="view-inventory" class="hidden space-y-6">
-                <div class="flex justify-between items-center">
-                    <h1 class="text-2xl font-bold text-slate-800">Inventory Management</h1>
-                </div>
-                <div class="glass-card rounded-3xl overflow-hidden">
-                    <table class="w-full text-left border-collapse">
+                <h1 class="text-2xl font-bold text-slate-800">สต็อกสินค้า</h1>
+                <div class="glass-card rounded-3xl overflow-hidden shadow-sm">
+                    <table class="w-full text-left">
                         <thead>
-                            <tr class="bg-slate-50 text-slate-500 text-sm uppercase">
-                                <th class="p-6">Product</th>
-                                <th class="p-6">Category</th>
-                                <th class="p-6">Price</th>
-                                <th class="p-6">Stock Level</th>
-                                <th class="p-6">Status</th>
+                            <tr class="bg-slate-50/50 text-slate-500 text-sm">
+                                <th class="p-5">รหัส/บาร์โค้ด</th>
+                                <th class="p-5">ชื่อการค้า</th>
+                                <th class="p-5">หน่วย</th>
+                                <th class="p-5">ต้นทุน</th>
+                                <th class="p-5">ราคาขาย</th>
                             </tr>
                         </thead>
-                        <tbody id="inventory-table-body" class="divide-y divide-slate-100">
-                            </tbody>
+                        <tbody id="inventory-table-body" class="divide-y divide-slate-100"></tbody>
                     </table>
                 </div>
             </div>
-
         </main>
     </div>
 
@@ -134,17 +112,19 @@
                 
                 Papa.parse(csvText, {
                     header: true,
-                    dynamicTyping: true,
+                    skipEmptyLines: true,
                     complete: (results) => {
-                        // Adjust mapping based on typical CSV headers
+                        // แมปปิ้งตามชื่อคอลัมน์ภาษาไทยของคุณ
                         inventory = results.data.map((item, index) => ({
                             id: index,
-                            name: item.Name || item.product || 'Unknown Product',
-                            price: parseFloat(item.Price || item.price || 0),
-                            stock: parseInt(item.Stock || item.quantity || 0),
-                            category: item.Category || item.category || 'General',
-                            image: `https://source.unsplash.com/featured/?${item.Name},product`
-                        })).filter(item => item.name !== 'Unknown Product');
+                            code: item['รหัสสินค้า'] || '-',
+                            name: item['ชื่อการค้า'] || 'ไม่มีชื่อ',
+                            unit: item['หน่วย'] || 'ชิ้น',
+                            barcode: item['บาร์โค้ด'] || '',
+                            price: parseFloat(String(item['ราคา']).replace(/,/g, '')) || 0,
+                            cost: parseFloat(String(item['ต้นทุน']).replace(/,/g, '')) || 0,
+                            image: `https://ui-avatars.com/api/?name=${encodeURIComponent(item['ชื่อการค้า'])}&background=random&size=128`
+                        }));
                         
                         renderProducts();
                         renderInventory();
@@ -152,22 +132,29 @@
                     }
                 });
             } catch (error) {
-                console.error("Error fetching data:", error);
-                alert("Failed to load inventory. Check console.");
+                alert("ไม่สามารถเชื่อมต่อข้อมูลได้ กรุณาตรวจสอบการตั้งค่า Publish to Web");
+                syncIcon.classList.remove('fa-spin');
             }
         }
 
         function renderProducts() {
+            const searchTerm = document.getElementById('search-box').value.toLowerCase();
             const container = document.getElementById('product-list');
-            container.innerHTML = inventory.map(item => `
-                <div onclick="addToCart(${item.id})" class="glass-card p-4 rounded-3xl cursor-pointer hover:shadow-xl transition-all group">
-                    <div class="h-32 bg-slate-100 rounded-2xl mb-4 overflow-hidden">
-                        <img src="${item.image}" class="w-full h-full object-cover group-hover:scale-110 transition-transform">
+            
+            const filtered = inventory.filter(item => 
+                item.name.toLowerCase().includes(searchTerm) || 
+                item.barcode.toString().includes(searchTerm)
+            );
+
+            container.innerHTML = filtered.map(item => `
+                <div onclick="addToCart(${item.id})" class="glass-card p-4 rounded-3xl cursor-pointer hover:scale-[1.02] transition-all group">
+                    <div class="h-28 bg-slate-50 rounded-2xl mb-3 flex items-center justify-center overflow-hidden">
+                        <img src="${item.image}" class="w-full h-full object-cover">
                     </div>
-                    <h3 class="font-bold text-slate-800 truncate">${item.name}</h3>
-                    <div class="flex justify-between items-center mt-2">
-                        <span class="text-blue-600 font-bold">$${item.price.toFixed(2)}</span>
-                        <span class="text-xs text-slate-400">Stock: ${item.stock}</span>
+                    <h3 class="font-bold text-slate-800 text-sm h-10 overflow-hidden line-clamp-2">${item.name}</h3>
+                    <div class="flex justify-between items-end mt-2">
+                        <span class="text-blue-600 font-bold text-lg">฿${item.price.toLocaleString()}</span>
+                        <span class="text-[10px] text-slate-400 font-medium">${item.unit}</span>
                     </div>
                 </div>
             `).join('');
@@ -175,11 +162,9 @@
 
         function addToCart(id) {
             const product = inventory.find(i => i.id === id);
-            if (product.stock <= 0) return alert("Out of stock!");
-
             const existing = cart.find(c => c.id === id);
             if (existing) {
-                if (existing.qty < product.stock) existing.qty++;
+                existing.qty++;
             } else {
                 cart.push({ ...product, qty: 1 });
             }
@@ -189,98 +174,68 @@
         function renderCart() {
             const container = document.getElementById('cart-items');
             if (cart.length === 0) {
-                container.innerHTML = `<p class="text-slate-400 text-center py-10">Cart is empty</p>`;
-                updateTotals(0);
+                container.innerHTML = `<p class="text-slate-400 text-center py-10">ยังไม่มีสินค้าในรถเข็น</p>`;
+                document.getElementById('total').innerText = '฿0.00';
                 return;
             }
 
             container.innerHTML = cart.map(item => `
-                <div class="flex items-center gap-4 bg-white/50 p-3 rounded-2xl">
+                <div class="flex items-center gap-3 bg-white/60 p-3 rounded-2xl shadow-sm">
                     <div class="flex-1">
-                        <h4 class="font-medium text-slate-800 text-sm">${item.name}</h4>
-                        <p class="text-xs text-slate-500">$${item.price.toFixed(2)} x ${item.qty}</p>
+                        <h4 class="font-bold text-slate-800 text-xs">${item.name}</h4>
+                        <p class="text-[10px] text-blue-500">฿${item.price.toLocaleString()} / ${item.unit}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="updateQty(${item.id}, -1)" class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">-</button>
-                        <span class="w-4 text-center font-bold">${item.qty}</span>
-                        <button onclick="updateQty(${item.id}, 1)" class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">+</button>
+                        <button onclick="updateQty(${item.id}, -1)" class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs">-</button>
+                        <span class="w-4 text-center font-bold text-sm">${item.qty}</span>
+                        <button onclick="updateQty(${item.id}, 1)" class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs">+</button>
                     </div>
                 </div>
             `).join('');
 
             const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-            updateTotals(total);
+            document.getElementById('total').innerText = `฿${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         }
 
         function updateQty(id, delta) {
             const item = cart.find(c => c.id === id);
-            const product = inventory.find(i => i.id === id);
-            
             if (item) {
                 item.qty += delta;
-                if (item.qty > product.stock) item.qty = product.stock;
                 if (item.qty <= 0) cart = cart.filter(c => c.id !== id);
             }
             renderCart();
         }
 
-        function updateTotals(total) {
-            document.getElementById('subtotal').innerText = `$${total.toFixed(2)}`;
-            document.getElementById('total').innerText = `$${total.toFixed(2)}`;
-        }
-
         function processSale() {
             if (cart.length === 0) return;
-            
-            // Deduct from inventory
-            cart.forEach(cartItem => {
-                const invItem = inventory.find(i => i.id === cartItem.id);
-                if (invItem) invItem.stock -= cartItem.qty;
-            });
-
-            alert("Sale Successful! 2026 Receipt Generated.");
+            alert("ชำระเงินเรียบร้อยแล้ว!");
             cart = [];
             renderCart();
-            renderProducts();
-            renderInventory();
         }
 
         function renderInventory() {
             const tbody = document.getElementById('inventory-table-body');
             tbody.innerHTML = inventory.map(item => `
-                <tr class="hover:bg-white/40 transition-colors">
-                    <td class="p-6 font-medium text-slate-800">${item.name}</td>
-                    <td class="p-6 text-slate-500 text-sm">${item.category}</td>
-                    <td class="p-6 font-bold text-slate-700">$${item.price.toFixed(2)}</td>
-                    <td class="p-6">
-                        <div class="w-32 bg-slate-200 rounded-full h-2 mt-1">
-                            <div class="bg-blue-500 h-2 rounded-full" style="width: ${Math.min(item.stock, 100)}%"></div>
-                        </div>
-                        <span class="text-xs text-slate-400 mt-1">${item.stock} units remaining</span>
+                <tr class="hover:bg-white/50 transition-colors">
+                    <td class="p-5">
+                        <div class="text-xs font-bold text-slate-800">${item.code}</div>
+                        <div class="text-[10px] text-slate-400">${item.barcode}</div>
                     </td>
-                    <td class="p-6">
-                        <span class="px-3 py-1 rounded-full text-xs font-bold ${item.stock > 10 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}">
-                            ${item.stock > 10 ? 'Healthy' : 'Low Stock'}
-                        </span>
-                    </td>
+                    <td class="p-5 font-medium text-slate-700 text-sm">${item.name}</td>
+                    <td class="p-5 text-slate-500 text-sm">${item.unit}</td>
+                    <td class="p-5 text-slate-400 text-sm">฿${item.cost.toLocaleString()}</td>
+                    <td class="p-5 font-bold text-blue-600 text-sm">฿${item.price.toLocaleString()}</td>
                 </tr>
             `).join('');
         }
 
         function switchTab(tab) {
-            const views = ['pos', 'inventory'];
-            views.forEach(v => {
-                document.getElementById(`view-${v}`).classList.add('hidden');
-                document.getElementById(`nav-${v}`).classList.remove('active-nav');
-                document.getElementById(`nav-${v}`).classList.add('text-slate-500');
-            });
-
-            document.getElementById(`view-${tab}`).classList.remove('hidden');
-            document.getElementById(`nav-${tab}`).classList.add('active-nav');
-            document.getElementById(`nav-${tab}`).classList.remove('text-slate-500');
+            document.getElementById('view-pos').classList.toggle('hidden', tab !== 'pos');
+            document.getElementById('view-inventory').classList.toggle('hidden', tab !== 'inventory');
+            document.getElementById('nav-pos').className = tab === 'pos' ? 'nav-btn active-nav w-12 h-12 rounded-2xl flex items-center justify-center transition-all' : 'nav-btn w-12 h-12 rounded-2xl flex items-center justify-center text-slate-500 hover:bg-white transition-all';
+            document.getElementById('nav-inventory').className = tab === 'inventory' ? 'nav-btn active-nav w-12 h-12 rounded-2xl flex items-center justify-center transition-all' : 'nav-btn w-12 h-12 rounded-2xl flex items-center justify-center text-slate-500 hover:bg-white transition-all';
         }
 
-        // Initialize
         fetchData();
     </script>
 </body>
