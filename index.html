@@ -2012,29 +2012,15 @@ async importFromGoogleSheet(isAutomatic = false) {
 
             let operations = [];
 
-            // --- Helper Functions ที่ปรับปรุงใหม่ให้แข็งแกร่งขึ้น ป้องกันค่าว่างและ NaN ---
-            
-            // 1. ตัวกรองตัวเลข (เอาลูกน้ำออก และแปลงค่าว่างให้เป็น 0 เสมอ)
+            // --- 🛡️ Helper Functions ป้องกันข้อมูลว่างหรือผิดพลาด ---
             const safeParseFloat = (val) => {
                 if (val === null || val === undefined || val === '') return 0;
                 const num = parseFloat(String(val).replace(/,/g, ''));
                 return isNaN(num) ? 0 : num;
             };
 
-            // 2. หาว่าหน่วยนี้ต้องใช้ราคาไหนจาก Sheets
-            const resolvePrice = (unitName, row, conversionFactor) => {
-                unitName = String(unitName || '').trim();
-                const unit1 = String(row['หน่วย 1'] || '').trim();
-                const unit2 = String(row['หน่วย 2'] || '').trim();
-                
-                if (unit1 && unitName === unit1) return safeParseFloat(row['ราคา 1']);
-                if (unit2 && unitName === unit2) return safeParseFloat(row['ราคา 2']);
-                
-                // Fallback
-                return safeParseFloat(row['ราคา 1']) * conversionFactor;
-            };
+            const getSafeBarcode = (val) => (val !== undefined && val !== null && val !== '') ? String(val).trim() : '';
 
-            // 3. แยกโปรโมชั่นแบบ 3/100
             const parseTier = (str) => {
                 if (!str || typeof str !== 'string' || !str.includes('/')) return null;
                 const parts = str.split('/');
@@ -2043,7 +2029,28 @@ async importFromGoogleSheet(isAutomatic = false) {
                 return (qty > 0) ? { quantity: qty, price: price } : null;
             };
 
-            // -----------------------------------------------------------------
+            const resolvePrice = (unitName, row, conversionFactor) => {
+                unitName = String(unitName || '').trim();
+                const unit1 = String(row['หน่วย 1'] || '').trim();
+                const unit2 = String(row['หน่วย 2'] || '').trim();
+                
+                const p1 = safeParseFloat(row['ราคา 1']);
+                const p2 = safeParseFloat(row['ราคา 2']);
+                
+                // 1. ถ้าชื่อหน่วยตรง ให้ใช้ราคานั้นทันที
+                if (unit1 && unitName === unit1 && p1 > 0) return p1;
+                if (unit2 && unitName === unit2 && p2 > 0) return p2;
+                
+                // 2. Fallback: ถ้าชื่อหน่วยไม่ตรง บังคับดึง ราคา 1 หรือ ราคา 2 มาคำนวณเลย
+                if (p1 > 0) return p1 * conversionFactor;
+                if (p2 > 0) {
+                    const factor2 = safeParseFloat(row['ค่าการแปลงหน่วยที่ 2']) || 1;
+                    return (p2 / factor2) * conversionFactor;
+                }
+                return 0; // ไม่มีราคาจริงๆ
+            };
+
+            // ---------------------------------------------------------
 
             for (const row of sheetData) {
                 const code = row['รหัสสินค้า'] ? String(row['รหัสสินค้า']).trim() : null;
@@ -2051,7 +2058,7 @@ async importFromGoogleSheet(isAutomatic = false) {
 
                 const baseCost = safeParseFloat(row['ต้นทุน']);
                 
-                // ดึงราคาโปรโมชั่น (Tier)
+                // ดึงราคาโปรโมชั่นขั้นบันได
                 const tiers = [];
                 [row['ระดับที่ 1'], row['ระดับที่ 2'], row['ระดับที่ 3']].forEach(val => {
                     const parsed = parseTier(val);
@@ -2061,67 +2068,62 @@ async importFromGoogleSheet(isAutomatic = false) {
 
                 const pricingUnits = [];
 
-                // Helper เช็คบาร์โค้ด
-                const getSafeBarcode = (val) => (val !== undefined && val !== null && val !== '') ? String(val).trim() : '';
-
-                // --- หน่วยที่ 1 (Base Unit) ---
-                if (row['หน่วยนับที่ 1']) {
-                    const unitName = String(row['หน่วยนับที่ 1']).trim();
-                    const price = resolvePrice(unitName, row, 1);
-                    
-                    let unitTiers = [...tiers];
-                    if (!unitTiers.find(t => t.quantity === 1)) {
-                        unitTiers.push({ quantity: 1, price: price });
-                        unitTiers.sort((a, b) => b.quantity - a.quantity);
-                    }
-
-                    pricingUnits.push({
-                        unitName: unitName,
-                        barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 1']),
-                        cost: baseCost,
-                        conversionFactor: 1,
-                        defaultPrice: price,
-                        priceTiers: unitTiers
-                    });
+                // 📌 หน่วยที่ 1 (Base Unit) -> บังคับสร้างเสมอ แม้จะเว้นบาร์โค้ดไว้ก็ตาม!
+                const unitName1 = String(row['หน่วยนับที่ 1'] || 'ชิ้น').trim();
+                const price1 = resolvePrice(unitName1, row, 1);
+                
+                let unitTiers1 = [...tiers];
+                if (!unitTiers1.find(t => t.quantity === 1)) {
+                    unitTiers1.push({ quantity: 1, price: price1 });
+                    unitTiers1.sort((a, b) => b.quantity - a.quantity);
                 }
 
-                // --- หน่วยที่ 2 ---
+                pricingUnits.push({
+                    unitName: unitName1,
+                    barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 1']),
+                    cost: baseCost,
+                    conversionFactor: 1,
+                    defaultPrice: price1,
+                    priceTiers: unitTiers1
+                });
+
+                // 📌 หน่วยที่ 2
                 if (row['หน่วยนับที่ 2'] && row['ค่าการแปลงหน่วยที่ 2']) {
-                    const unitName = String(row['หน่วยนับที่ 2']).trim();
-                    const factor = safeParseFloat(row['ค่าการแปลงหน่วยที่ 2']) || 1;
-                    const price = resolvePrice(unitName, row, factor);
+                    const unitName2 = String(row['หน่วยนับที่ 2']).trim();
+                    const factor2 = safeParseFloat(row['ค่าการแปลงหน่วยที่ 2']) || 1;
+                    const price2 = resolvePrice(unitName2, row, factor2);
 
                     pricingUnits.push({
-                        unitName: unitName,
+                        unitName: unitName2,
                         barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 2']),
-                        cost: baseCost * factor,
-                        conversionFactor: factor,
-                        defaultPrice: price,
-                        priceTiers: [{ quantity: 1, price: price }]
+                        cost: baseCost * factor2,
+                        conversionFactor: factor2,
+                        defaultPrice: price2,
+                        priceTiers: [{ quantity: 1, price: price2 }]
                     });
                 }
 
-                // --- หน่วยที่ 3 ---
+                // 📌 หน่วยที่ 3
                 if (row['หน่วยนับที่ 3'] && row['ค่าการแปลงหน่วยที่ 3']) {
-                    const unitName = String(row['หน่วยนับที่ 3']).trim();
-                    const factor = safeParseFloat(row['ค่าการแปลงหน่วยที่ 3']) || 1;
-                    const price = resolvePrice(unitName, row, factor);
+                    const unitName3 = String(row['หน่วยนับที่ 3']).trim();
+                    const factor3 = safeParseFloat(row['ค่าการแปลงหน่วยที่ 3']) || 1;
+                    const price3 = resolvePrice(unitName3, row, factor3);
 
                     pricingUnits.push({
-                        unitName: unitName,
+                        unitName: unitName3,
                         barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 3']),
-                        cost: baseCost * factor,
-                        conversionFactor: factor,
-                        defaultPrice: price,
-                        priceTiers: [{ quantity: 1, price: price }]
+                        cost: baseCost * factor3,
+                        conversionFactor: factor3,
+                        defaultPrice: price3,
+                        priceTiers: [{ quantity: 1, price: price3 }]
                     });
                 }
 
                 const productData = {
                     productCode: code,
                     productName: row['ชื่อการค้า'] ? String(row['ชื่อการค้า']).trim() : 'ไม่มีชื่อ',
-                    baseUnit: String(row['หน่วยนับที่ 1'] || 'ชิ้น').trim(),
-                    mainSellingUnit: String(row['หน่วยขายหลัก'] || row['หน่วยนับที่ 1']).trim(),
+                    baseUnit: unitName1,
+                    mainSellingUnit: String(row['หน่วยขายหลัก'] || unitName1).trim(),
                     pricingUnits: pricingUnits,
                     updatedAt: now
                 };
@@ -2131,7 +2133,6 @@ async importFromGoogleSheet(isAutomatic = false) {
                     operations.push({ type: 'UPDATE', ref: api.doc(productsRef, existing.id), data: productData });
                 } else {
                     productData.createdAt = now;
-                    productData.stockInBaseUnits = 0;
                     operations.push({ type: 'SET', ref: api.doc(productsRef), data: productData });
                 }
             }
