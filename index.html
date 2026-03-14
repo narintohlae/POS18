@@ -2012,7 +2012,7 @@ async importFromGoogleSheet(isAutomatic = false) {
 
             let operations = [];
 
-            // Helper 1: หาว่าหน่วยนี้ต้องใช้ราคาไหนจาก Sheets
+            // Helper: หาว่าหน่วยนี้ต้องใช้ราคาไหนจาก Sheets
             const resolvePrice = (unitName, row, conversionFactor) => {
                 unitName = String(unitName).trim();
                 if (row['หน่วย 1'] && unitName === String(row['หน่วย 1']).trim()) return parseFloat(row['ราคา 1']) || 0;
@@ -2021,15 +2021,6 @@ async importFromGoogleSheet(isAutomatic = false) {
                 // Fallback: หากไม่พบราคาที่ระบุตรงๆ ให้นำราคาของหน่วยที่ 1 มาคูณตัวแปลง
                 const basePrice = parseFloat(row['ราคา 1']) || 0;
                 return basePrice * conversionFactor;
-            };
-
-            // Helper 2: แก้ปัญหา parseTier is not defined โดยนำมาไว้ตรงนี้
-            const parseTier = (str) => {
-                if (!str || typeof str !== 'string' || !str.includes('/')) return null;
-                const parts = str.split('/');
-                const qty = parseFloat(parts[0].trim());
-                const price = parseFloat(parts[1].trim());
-                return (!isNaN(qty) && !isNaN(price) && qty > 0) ? { quantity: qty, price: price } : null;
             };
 
             for (const row of sheetData) {
