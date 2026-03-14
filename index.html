@@ -3783,14 +3783,14 @@ async generateSaleId() {
 }
 ,
 async exportToExcel() {
-    console.log("🚀 เริ่มต้น Export: ตัดคอลัมน์ส่วนเกินออก และปรับปรุงหน่วยย่อย/ตัวคูณ...");
+    console.log("🚀 เริ่มต้น Export: ปรับความกว้างคอลัมน์ตามหัวข้ออัตโนมัติ...");
 
     if (!this.state.salesHistory || this.state.salesHistory.length === 0) {
         this.showInfoModal("ไม่มีข้อมูล", "ไม่มีข้อมูลประวัติการขายให้ Export", false);
         return;
     }
 
-    // 1. เตรียมข้อมูลสำหรับ Export 
+    // 1. เตรียมข้อมูลสำหรับ Export
     const dataToExport = this.state.salesHistory.flatMap(sale =>
         sale.items.map(item => {
             const quantitySold = item.quantity || 0;
@@ -3808,13 +3808,11 @@ async exportToExcel() {
             let finalBaseUnit = item.baseUnit || (productSetup ? productSetup.baseUnit : null) || unitSold;
 
             const specialUnitObj = productSetup?.pricingUnits?.find(u => u.parentUnit);
-
             if (specialUnitObj) {
                 const multiplier = Math.round(1 / specialUnitObj.conversionFactor);
                 finalTotalSmallUnits = quantitySold * multiplier;    
                 finalBaseUnit = specialUnitObj.unitName; 
-            } 
-            else if (finalTotalSmallUnits % 1 !== 0) {
+            } else if (finalTotalSmallUnits % 1 !== 0) {
                 finalTotalSmallUnits = quantitySold;
                 finalBaseUnit = unitSold;
             }
@@ -3843,35 +3841,27 @@ async exportToExcel() {
     try {
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
-        // 2. --- [🌟 แก้ไขใหม่: คำนวณความกว้างคอลัมน์อัตโนมัติ (Auto-Fit ทุกคอลัมน์)] ---
-        const calcWidth = (text) => {
-            if (text === null || text === undefined) return 10;
+        // 2. --- [🌟 ลอจิกปรับความกว้างตามหัวคอลัมน์ 🌟] ---
+        const getCustomWidth = (text) => {
+            if (!text) return 10;
             const str = text.toString();
-            // ตัวอักษรไทยอาจจะใช้พื้นที่ต่างจากภาษาอังกฤษ เลยเผื่อพื้นที่สระไว้ด้วย
+            // ภาษาไทยใช้พื้นที่มากกว่าปกติ (คูณ 1.2) ภาษาอังกฤษ/ตัวเลข (คูณ 1)
             const thaiChars = (str.match(/[ก-๙]/g) || []).length;
-            return str.length + (thaiChars * 0.5); 
+            const otherChars = str.length - thaiChars;
+            return (thaiChars * 1.8) + (otherChars * 1.1); 
         };
 
         const headers = Object.keys(dataToExport[0]);
-        const colWidths = headers.map((key) => {
-            // 2.1 เริ่มต้นตั้งค่าความกว้างตาม "ชื่อหัวคอลัมน์" ก่อน
-            let maxWidth = calcWidth(key);
+        const colWidths = headers.map((header) => {
+            // ยึดความกว้างจาก "ชื่อหัวคอลัมน์" เป็นฐาน
+            let headerWidth = getCustomWidth(header);
             
-            // 2.2 วนเช็คข้อมูลทุกบรรทัดในคอลัมน์นี้ ว่ามีเซลล์ไหนยาวกว่าหัวคอลัมน์ไหม
-            dataToExport.forEach(row => {
-                const cellWidth = calcWidth(row[key]);
-                if (cellWidth > maxWidth) {
-                    maxWidth = cellWidth;
-                }
-            });
-            
-            // 2.3 บวกพื้นที่ว่างซ้ายขวา (Padding) ไปอีก 3 ตัวอักษร ให้ดูไม่อึดอัด
-            // และตั้ง Limit สูงสุดไว้ที่ 60 ป้องกันคอลัมน์กว้างเกินหน้าจอ
-            return { wch: Math.min(Math.round(maxWidth + 3), 60) }; 
+            // เผื่อความกว้างไว้เล็กน้อย (+4) เพื่อความสวยงามและไม่ให้ชิดขอบเกินไป
+            return { wch: Math.round(headerWidth + 4) };
         });
 
         worksheet['!cols'] = colWidths;
-        // -------------------------------------------------------------
+        // ----------------------------------------------
 
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales_Report');
@@ -3879,7 +3869,7 @@ async exportToExcel() {
         const fileName = `Sales_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
         XLSX.writeFile(workbook, fileName);
         
-        console.log(`🎉 Export สำเร็จ: ปรับความกว้างคอลัมน์อัตโนมัติเรียบร้อย`);
+        console.log(`🎉 Export สำเร็จ: ปรับความกว้างตามหัวคอลัมน์แล้ว`);
 
     } catch (e) {
         console.error("Export Excel Error:", e);
