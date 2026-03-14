@@ -1989,151 +1989,192 @@ const response = await fetch(this.config.googleSheetUrl + '?t=' + new Date().get
     },
 
 async importFromGoogleSheet(isAutomatic = false) {
-        if (!isAutomatic) {
-            this.showInfoModal("กำลังนำเข้า...", "ระบบกำลังดึงข้อมูลราคาและหน่วยนับจาก Google Sheets...");
-        }
+    if (!isAutomatic) {
+        this.showInfoModal("กำลังนำเข้า...", "ระบบกำลังดึงข้อมูลราคาและหน่วยนับจาก Google Sheets...");
+    }
 
-        try {
-            const response = await fetch(this.config.googleSheetUrl + '?t=' + Date.now());
-            const results = await response.json();
-            const sheetData = results.data || results;
+    try {
+        const response = await fetch(this.config.googleSheetUrl + '?t=' + Date.now());
+        const results = await response.json();
+        const sheetData = results.data || results;
 
-            const { db, api } = window.firebaseServices;
-            const productsRef = this.getProductsCollectionRef();
-            const now = new Date().toISOString();
+        const { db, api } = window.firebaseServices;
+        const productsRef = this.getProductsCollectionRef();
+        const now = new Date().toISOString();
 
-            // โหลดข้อมูลเก่าเพื่อเปรียบเทียบ
-            const existingDocs = await api.getDocs(productsRef);
-            const existingMap = new Map();
-            existingDocs.forEach(doc => {
-                const d = doc.data();
-                if (d.productCode) existingMap.set(String(d.productCode).trim(), { id: doc.id, data: d });
+        // โหลดข้อมูลเก่าเพื่อเปรียบเทียบ (ลดการโหลดทับ)
+        const existingDocs = await api.getDocs(productsRef);
+        const existingMap = new Map();
+        existingDocs.forEach(doc => {
+            const d = doc.data();
+            if (d.productCode) existingMap.set(String(d.productCode).trim(), { id: doc.id, data: d });
+        });
+
+        let operations = [];
+
+        // ---------------------------------------------------------
+        // 1. Helper: จัดการตัวเลขให้สะอาด (ตัดลูกน้ำทิ้ง ป้องกัน Error)
+        // ---------------------------------------------------------
+        const parseNumberValue = (val) => {
+            if (val === undefined || val === null || val === '') return 0;
+            const cleanVal = String(val).replace(/,/g, '').replace(/[^\d.-]/g, '');
+            return parseFloat(cleanVal) || 0;
+        };
+
+        // ---------------------------------------------------------
+        // 2. Helper: ดึงข้อมูลโปรโมชั่น "ระดับที่ 1, 2, 3"
+        // สมมติว่าในชีตคุณพิมพ์รูปแบบ จำนวน:ราคา เช่น "3:100" หรือ "3=100"
+        // ---------------------------------------------------------
+        const parseTier = (val) => {
+            if (!val) return null;
+            // รองรับเครื่องหมายแบ่งโควตาหลายแบบ เช่น :, =, /, |
+            const parts = String(val).split(/[:=/|]/); 
+            if (parts.length >= 2) {
+                const qty = parseNumberValue(parts[0]);
+                const price = parseNumberValue(parts[1]);
+                if (qty > 0 && price > 0) return { quantity: qty, price: price };
+            }
+            return null;
+        };
+
+        // ---------------------------------------------------------
+        // 3. Helper: ค้นหาราคาแบบยืดหยุ่น ตามชื่อหน่วยที่คุณตั้ง
+        // ---------------------------------------------------------
+        const resolvePrice = (unitName, row, conversionFactor) => {
+            const targetUnit = String(unitName).trim().toLowerCase();
+
+            const price1 = parseNumberValue(row['ราคา 1']);
+            const priceUnit1 = row['หน่วย 1'] ? String(row['หน่วย 1']).trim().toLowerCase() : '';
+            
+            const price2 = parseNumberValue(row['ราคา 2']);
+            const priceUnit2 = row['หน่วย 2'] ? String(row['หน่วย 2']).trim().toLowerCase() : '';
+
+            // Step 1: ถ้าชื่อหน่วยตรงกับคอลัมน์ "หน่วย 1" หรือ "หน่วย 2" เป๊ะๆ
+            if (priceUnit1 === targetUnit && price1 > 0) return price1;
+            if (priceUnit2 === targetUnit && price2 > 0) return price2;
+
+            // Step 2: Fallback กรณีไม่ได้ระบุชื่อหน่วยที่ชัดเจน
+            if (conversionFactor === 1 && price1 > 0) return price1;
+            if (conversionFactor > 1 && price1 > 0) return price1 * conversionFactor;
+
+            return 0; // ถ้าหาไม่เจอจริงๆ คืนค่า 0 ไปก่อน
+        };
+
+        for (const row of sheetData) {
+            const code = row['รหัสสินค้า'] ? String(row['รหัสสินค้า']).trim() : null;
+            if (!code) continue;
+
+            const baseCost = parseNumberValue(row['ต้นทุน']);
+            
+            // ดึงราคาโปรโมชั่นจากคอลัมน์ ระดับที่ 1-3
+            const tiers = [];
+            [row['ระดับที่ 1'], row['ระดับที่ 2'], row['ระดับที่ 3']].forEach(val => {
+                const parsed = parseTier(val);
+                if (parsed) tiers.push(parsed);
             });
+            // เรียงจากจำนวนมากไปน้อย เพื่อให้บิลคำนวณโปรโมชั่นคุ้มสุดให้ลูกค้าก่อน
+            tiers.sort((a, b) => b.quantity - a.quantity);
 
-            let operations = [];
+            const pricingUnits = [];
 
-            // Helper: หาว่าหน่วยนี้ต้องใช้ราคาไหนจาก Sheets
-            const resolvePrice = (unitName, row, conversionFactor) => {
-                unitName = String(unitName).trim();
-                if (row['หน่วย 1'] && unitName === String(row['หน่วย 1']).trim()) return parseFloat(row['ราคา 1']) || 0;
-                if (row['หน่วย 2'] && unitName === String(row['หน่วย 2']).trim()) return parseFloat(row['ราคา 2']) || 0;
+            // --- จัดการ "หน่วยนับที่ 1" (Base Unit) ---
+            if (row['หน่วยนับที่ 1']) {
+                const unitName = String(row['หน่วยนับที่ 1']).trim();
+                const price = resolvePrice(unitName, row, 1);
                 
-                // Fallback: หากไม่พบราคาที่ระบุตรงๆ ให้นำราคาของหน่วยที่ 1 มาคูณตัวแปลง
-                const basePrice = parseFloat(row['ราคา 1']) || 0;
-                return basePrice * conversionFactor;
+                let unitTiers = [...tiers];
+                // เพิ่มราคาชิ้นเดี่ยวเข้าไปในชุดโปรโมชั่นด้วย
+                if (!unitTiers.find(t => t.quantity === 1)) {
+                    unitTiers.push({ quantity: 1, price: price });
+                    unitTiers.sort((a, b) => b.quantity - a.quantity);
+                }
+
+                pricingUnits.push({
+                    unitName: unitName,
+                    barcode: row['บาร์โค้ดในหน่วยนับ 1'] ? String(row['บาร์โค้ดในหน่วยนับ 1']).trim() : '',
+                    cost: baseCost,
+                    conversionFactor: 1,
+                    defaultPrice: price,
+                    priceTiers: unitTiers
+                });
+            }
+
+            // --- จัดการ "หน่วยนับที่ 2" ---
+            if (row['หน่วยนับที่ 2'] && row['ค่าการแปลงหน่วยที่ 2']) {
+                const unitName = String(row['หน่วยนับที่ 2']).trim();
+                const factor = parseNumberValue(row['ค่าการแปลงหน่วยที่ 2']) || 1;
+                const price = resolvePrice(unitName, row, factor);
+
+                pricingUnits.push({
+                    unitName: unitName,
+                    barcode: row['บาร์โค้ดในหน่วยนับ 2'] ? String(row['บาร์โค้ดในหน่วยนับ 2']).trim() : '',
+                    cost: baseCost * factor,
+                    conversionFactor: factor,
+                    defaultPrice: price,
+                    priceTiers: [{ quantity: 1, price: price }]
+                });
+            }
+
+            // --- จัดการ "หน่วยนับที่ 3" ---
+            if (row['หน่วยนับที่ 3'] && row['ค่าการแปลงหน่วยที่ 3']) {
+                const unitName = String(row['หน่วยนับที่ 3']).trim();
+                const factor = parseNumberValue(row['ค่าการแปลงหน่วยที่ 3']) || 1;
+                const price = resolvePrice(unitName, row, factor);
+
+                pricingUnits.push({
+                    unitName: unitName,
+                    barcode: row['บาร์โค้ดในหน่วยนับ 3'] ? String(row['บาร์โค้ดในหน่วยนับ 3']).trim() : '',
+                    cost: baseCost * factor,
+                    conversionFactor: factor,
+                    defaultPrice: price,
+                    priceTiers: [{ quantity: 1, price: price }]
+                });
+            }
+
+            // ประกอบร่างข้อมูลก่อนโยนเข้า Firebase
+            const productData = {
+                productCode: code,
+                productName: row['ชื่อการค้า'] ? String(row['ชื่อการค้า']).trim() : 'ไม่มีชื่อ',
+                baseUnit: String(row['หน่วยนับที่ 1'] || 'ชิ้น').trim(),
+                mainSellingUnit: String(row['หน่วยขายหลัก'] || row['หน่วยนับที่ 1']).trim(),
+                pricingUnits: pricingUnits,
+                updatedAt: now
             };
 
-            for (const row of sheetData) {
-                const code = row['รหัสสินค้า'] ? String(row['รหัสสินค้า']).trim() : null;
-                if (!code) continue;
-
-                const baseCost = parseFloat(row['ต้นทุน']) || 0;
-                
-                // ดึงราคาโปรโมชั่น (Tier)
-                const tiers = [];
-                [row['ระดับที่ 1'], row['ระดับที่ 2'], row['ระดับที่ 3']].forEach(val => {
-                    const parsed = parseTier(val);
-                    if (parsed) tiers.push(parsed);
-                });
-                // เรียงจากจำนวนมากไปน้อย เพื่อให้คำนวณโปรโมชั่นคุ้มสุดก่อน
-                tiers.sort((a, b) => b.quantity - a.quantity);
-
-                const pricingUnits = [];
-
-                // --- หน่วยที่ 1 (Base Unit) ---
-                if (row['หน่วยนับที่ 1']) {
-                    const unitName = String(row['หน่วยนับที่ 1']).trim();
-                    const price = resolvePrice(unitName, row, 1);
-                    
-                    let unitTiers = [...tiers];
-                    if (!unitTiers.find(t => t.quantity === 1)) {
-                        unitTiers.push({ quantity: 1, price: price });
-                        unitTiers.sort((a, b) => b.quantity - a.quantity);
-                    }
-
-                    pricingUnits.push({
-                        unitName: unitName,
-                        barcode: row['บาร์โค้ดในหน่วยนับ 1'] ? String(row['บาร์โค้ดในหน่วยนับ 1']).trim() : '',
-                        cost: baseCost,
-                        conversionFactor: 1,
-                        defaultPrice: price,
-                        priceTiers: unitTiers
-                    });
-                }
-
-                // --- หน่วยที่ 2 ---
-                if (row['หน่วยนับที่ 2'] && row['ค่าการแปลงหน่วยที่ 2']) {
-                    const unitName = String(row['หน่วยนับที่ 2']).trim();
-                    const factor = parseFloat(row['ค่าการแปลงหน่วยที่ 2']) || 1;
-                    const price = resolvePrice(unitName, row, factor);
-
-                    pricingUnits.push({
-                        unitName: unitName,
-                        barcode: row['บาร์โค้ดในหน่วยนับ 2'] ? String(row['บาร์โค้ดในหน่วยนับ 2']).trim() : '',
-                        cost: baseCost * factor,
-                        conversionFactor: factor,
-                        defaultPrice: price,
-                        priceTiers: [{ quantity: 1, price: price }]
-                    });
-                }
-
-                // --- หน่วยที่ 3 ---
-                if (row['หน่วยนับที่ 3'] && row['ค่าการแปลงหน่วยที่ 3']) {
-                    const unitName = String(row['หน่วยนับที่ 3']).trim();
-                    const factor = parseFloat(row['ค่าการแปลงหน่วยที่ 3']) || 1;
-                    const price = resolvePrice(unitName, row, factor);
-
-                    pricingUnits.push({
-                        unitName: unitName,
-                        barcode: row['บาร์โค้ดในหน่วยนับ 3'] ? String(row['บาร์โค้ดในหน่วยนับ 3']).trim() : '',
-                        cost: baseCost * factor,
-                        conversionFactor: factor,
-                        defaultPrice: price,
-                        priceTiers: [{ quantity: 1, price: price }]
-                    });
-                }
-
-                const productData = {
-                    productCode: code,
-                    productName: row['ชื่อการค้า'] ? String(row['ชื่อการค้า']).trim() : 'ไม่มีชื่อ',
-                    baseUnit: String(row['หน่วยนับที่ 1'] || 'ชิ้น').trim(),
-                    mainSellingUnit: String(row['หน่วยขายหลัก'] || row['หน่วยนับที่ 1']).trim(),
-                    pricingUnits: pricingUnits,
-                    updatedAt: now
-                };
-
-                const existing = existingMap.get(code);
-                if (existing) {
-                    operations.push({ type: 'UPDATE', ref: api.doc(productsRef, existing.id), data: productData });
-                } else {
-                    productData.createdAt = now;
-                    productData.stockInBaseUnits = 0;
-                    operations.push({ type: 'SET', ref: api.doc(productsRef), data: productData });
-                }
+            const existing = existingMap.get(code);
+            if (existing) {
+                // ถ้ามีสินค้าอยู่แล้ว ให้อัปเดต
+                operations.push({ type: 'UPDATE', ref: api.doc(productsRef, existing.id), data: productData });
+            } else {
+                // ถ้าเป็นสินค้าใหม่ ให้สร้างใหม่ และเซ็ตสต็อกเป็น 0
+                productData.createdAt = now;
+                productData.stockInBaseUnits = 0;
+                operations.push({ type: 'SET', ref: api.doc(productsRef), data: productData });
             }
-
-            // แบ่งบันทึกทีละ 400 รายการ (ข้อจำกัด Firebase Batch)
-            const CHUNK_SIZE = 400;
-            for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
-                const chunk = operations.slice(i, i + CHUNK_SIZE);
-                const batch = api.writeBatch(db);
-                chunk.forEach(op => {
-                    if (op.type === 'UPDATE') batch.update(op.ref, op.data);
-                    else batch.set(op.ref, op.data);
-                });
-                await batch.commit();
-            }
-
-            if (!isAutomatic) {
-                document.getElementById('info-modal').style.display = 'none';
-                this.setActiveOverlay(null);
-                setTimeout(() => alert("ซิงค์ฐานข้อมูล Master จาก Sheets เรียบร้อยแล้ว!"), 100);
-            }
-        } catch (e) {
-            console.error(e);
-            if (!isAutomatic) this.showInfoModal("ผิดพลาด", "ไม่สามารถดึงข้อมูลได้: " + e.message, true);
         }
-    },
+
+        // แบ่งบันทึกทีละ 400 รายการ (Firebase Batch จำกัดที่ 500 ป้องกัน Error)
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+            const chunk = operations.slice(i, i + CHUNK_SIZE);
+            const batch = api.writeBatch(db);
+            chunk.forEach(op => {
+                if (op.type === 'UPDATE') batch.update(op.ref, op.data);
+                else batch.set(op.ref, op.data);
+            });
+            await batch.commit();
+        }
+
+        if (!isAutomatic) {
+            document.getElementById('info-modal').style.display = 'none';
+            this.setActiveOverlay(null);
+            setTimeout(() => alert("ซิงค์ข้อมูลจาก Sheets เรียบร้อยแล้ว!"), 100);
+        }
+    } catch (e) {
+        console.error(e);
+        if (!isAutomatic) this.showInfoModal("ผิดพลาด", "ไม่สามารถดึงข้อมูลได้: " + e.message, true);
+    }
+},
     getSalesHistoryCollectionRef() { const { appId, db, api } = window.firebaseServices;
     return api.collection(db, `artifacts/${appId}/public/data/salesHistory`); },
     getProductsCollectionRef() { const { appId, db, api } = window.firebaseServices; return api.collection(db, `artifacts/${appId}/public/data/products`);
