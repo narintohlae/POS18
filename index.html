@@ -2012,31 +2012,44 @@ async importFromGoogleSheet(isAutomatic = false) {
 
             let operations = [];
 
-            // Helper 1: หาว่าหน่วยนี้ต้องใช้ราคาไหนจาก Sheets
-            const resolvePrice = (unitName, row, conversionFactor) => {
-                unitName = String(unitName).trim();
-                if (row['หน่วย 1'] && unitName === String(row['หน่วย 1']).trim()) return parseFloat(row['ราคา 1']) || 0;
-                if (row['หน่วย 2'] && unitName === String(row['หน่วย 2']).trim()) return parseFloat(row['ราคา 2']) || 0;
-                
-                // Fallback: หากไม่พบราคาที่ระบุตรงๆ ให้นำราคาของหน่วยที่ 1 มาคูณตัวแปลง
-                const basePrice = parseFloat(row['ราคา 1']) || 0;
-                return basePrice * conversionFactor;
+            // --- Helper Functions ที่ปรับปรุงใหม่ให้แข็งแกร่งขึ้น ป้องกันค่าว่างและ NaN ---
+            
+            // 1. ตัวกรองตัวเลข (เอาลูกน้ำออก และแปลงค่าว่างให้เป็น 0 เสมอ)
+            const safeParseFloat = (val) => {
+                if (val === null || val === undefined || val === '') return 0;
+                const num = parseFloat(String(val).replace(/,/g, ''));
+                return isNaN(num) ? 0 : num;
             };
 
-            // Helper 2: แก้ปัญหา parseTier is not defined โดยนำมาไว้ตรงนี้
+            // 2. หาว่าหน่วยนี้ต้องใช้ราคาไหนจาก Sheets
+            const resolvePrice = (unitName, row, conversionFactor) => {
+                unitName = String(unitName || '').trim();
+                const unit1 = String(row['หน่วย 1'] || '').trim();
+                const unit2 = String(row['หน่วย 2'] || '').trim();
+                
+                if (unit1 && unitName === unit1) return safeParseFloat(row['ราคา 1']);
+                if (unit2 && unitName === unit2) return safeParseFloat(row['ราคา 2']);
+                
+                // Fallback
+                return safeParseFloat(row['ราคา 1']) * conversionFactor;
+            };
+
+            // 3. แยกโปรโมชั่นแบบ 3/100
             const parseTier = (str) => {
                 if (!str || typeof str !== 'string' || !str.includes('/')) return null;
                 const parts = str.split('/');
-                const qty = parseFloat(parts[0].trim());
-                const price = parseFloat(parts[1].trim());
-                return (!isNaN(qty) && !isNaN(price) && qty > 0) ? { quantity: qty, price: price } : null;
+                const qty = safeParseFloat(parts[0]);
+                const price = safeParseFloat(parts[1]);
+                return (qty > 0) ? { quantity: qty, price: price } : null;
             };
+
+            // -----------------------------------------------------------------
 
             for (const row of sheetData) {
                 const code = row['รหัสสินค้า'] ? String(row['รหัสสินค้า']).trim() : null;
                 if (!code) continue;
 
-                const baseCost = parseFloat(row['ต้นทุน']) || 0;
+                const baseCost = safeParseFloat(row['ต้นทุน']);
                 
                 // ดึงราคาโปรโมชั่น (Tier)
                 const tiers = [];
@@ -2044,10 +2057,12 @@ async importFromGoogleSheet(isAutomatic = false) {
                     const parsed = parseTier(val);
                     if (parsed) tiers.push(parsed);
                 });
-                // เรียงจากจำนวนมากไปน้อย เพื่อให้คำนวณโปรโมชั่นคุ้มสุดก่อน
                 tiers.sort((a, b) => b.quantity - a.quantity);
 
                 const pricingUnits = [];
+
+                // Helper เช็คบาร์โค้ด
+                const getSafeBarcode = (val) => (val !== undefined && val !== null && val !== '') ? String(val).trim() : '';
 
                 // --- หน่วยที่ 1 (Base Unit) ---
                 if (row['หน่วยนับที่ 1']) {
@@ -2062,7 +2077,7 @@ async importFromGoogleSheet(isAutomatic = false) {
 
                     pricingUnits.push({
                         unitName: unitName,
-                        barcode: row['บาร์โค้ดในหน่วยนับ 1'] ? String(row['บาร์โค้ดในหน่วยนับ 1']).trim() : '',
+                        barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 1']),
                         cost: baseCost,
                         conversionFactor: 1,
                         defaultPrice: price,
@@ -2073,12 +2088,12 @@ async importFromGoogleSheet(isAutomatic = false) {
                 // --- หน่วยที่ 2 ---
                 if (row['หน่วยนับที่ 2'] && row['ค่าการแปลงหน่วยที่ 2']) {
                     const unitName = String(row['หน่วยนับที่ 2']).trim();
-                    const factor = parseFloat(row['ค่าการแปลงหน่วยที่ 2']) || 1;
+                    const factor = safeParseFloat(row['ค่าการแปลงหน่วยที่ 2']) || 1;
                     const price = resolvePrice(unitName, row, factor);
 
                     pricingUnits.push({
                         unitName: unitName,
-                        barcode: row['บาร์โค้ดในหน่วยนับ 2'] ? String(row['บาร์โค้ดในหน่วยนับ 2']).trim() : '',
+                        barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 2']),
                         cost: baseCost * factor,
                         conversionFactor: factor,
                         defaultPrice: price,
@@ -2089,12 +2104,12 @@ async importFromGoogleSheet(isAutomatic = false) {
                 // --- หน่วยที่ 3 ---
                 if (row['หน่วยนับที่ 3'] && row['ค่าการแปลงหน่วยที่ 3']) {
                     const unitName = String(row['หน่วยนับที่ 3']).trim();
-                    const factor = parseFloat(row['ค่าการแปลงหน่วยที่ 3']) || 1;
+                    const factor = safeParseFloat(row['ค่าการแปลงหน่วยที่ 3']) || 1;
                     const price = resolvePrice(unitName, row, factor);
 
                     pricingUnits.push({
                         unitName: unitName,
-                        barcode: row['บาร์โค้ดในหน่วยนับ 3'] ? String(row['บาร์โค้ดในหน่วยนับ 3']).trim() : '',
+                        barcode: getSafeBarcode(row['บาร์โค้ดในหน่วยนับ 3']),
                         cost: baseCost * factor,
                         conversionFactor: factor,
                         defaultPrice: price,
