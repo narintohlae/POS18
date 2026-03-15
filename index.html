@@ -1466,8 +1466,6 @@ h2 .auth-status-badge.offline .dot { background: #999; }
     } else {
         console.warn("Firebase config not found in environment. Using local fallback. PLEASE REPLACE PLACEHOLDER VALUES.");
         firebaseConfig = {
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-firebaseConfig = {
   apiKey: "AIzaSyA-5dshwhwNgsnkDQRqD-cAp0g6fMPU1OQ",
   authDomain: "pos-17.firebaseapp.com",
   projectId: "pos-17",
@@ -2024,18 +2022,40 @@ async importFromGoogleSheet(isAutomatic = false) {
         };
 
         // ---------------------------------------------------------
-        // 2. Helper: ดึงข้อมูลโปรโมชั่น "ระดับที่ 1, 2, 3"
-        // สมมติว่าในชีตคุณพิมพ์รูปแบบ จำนวน:ราคา เช่น "3:100" หรือ "3=100"
+        // 2. Helper: ดึงข้อมูลโปรโมชั่น "ระดับที่ 1, 2, 3" (🌟 อัปเดตแก้บั๊ก Timezone 🌟)
         // ---------------------------------------------------------
         const parseTier = (val) => {
             if (!val) return null;
-            // รองรับเครื่องหมายแบ่งโควตาหลายแบบ เช่น :, =, /, |
-            const parts = String(val).split(/[:=/|]/); 
+            let strVal = String(val).trim();
+
+            // กรณีที่ 1: ดักจับรูปแบบ ISO Date (เช่น "2026-01-06T17:00:00.000Z")
+            // แปลงกลับเป็นเวลาของเครื่อง (Local Time) เพื่อชดเชยเวลาที่หายไป 7 ชั่วโมง
+            if (strVal.match(/^\d{4}-\d{2}-\d{2}T/)) {
+                const d = new Date(strVal);
+                if (!isNaN(d.getTime())) {
+                    // ใช้ getMonth() และ getDate() เพื่อดึงเวลาท้องถิ่น
+                    const num1 = d.getMonth() + 1; // เดือน (บวก 1 เพราะ JS เริ่มนับเดือน 0)
+                    const num2 = d.getDate();      // วันที่ (จะได้เลข 7 กลับมา)
+                    
+                    // ให้ค่าน้อยกว่าเป็น "จำนวนชิ้น" และค่ามากกว่าเป็น "ราคา"
+                    const qty = Math.min(num1, num2);
+                    const price = Math.max(num1, num2);
+                    
+                    if (qty > 0 && price > 0) return { quantity: qty, price: price };
+                }
+            }
+
+            // กรณีที่ 2: ดักจับข้อความที่มี ปี ค.ศ. หรือ พ.ศ. ต่อท้าย (เช่น "1/7/2026")
+            strVal = strVal.replace(/\/\d{4}(?:\s.*)?$/, ''); 
+
+            // กรณีที่ 3: แบบข้อความปกติ รองรับเครื่องหมายแบ่งโควตาหลายแบบ เช่น :, =, /, |
+            const parts = strVal.split(/[:=\/|]/);
             if (parts.length >= 2) {
                 const qty = parseNumberValue(parts[0]);
                 const price = parseNumberValue(parts[1]);
                 if (qty > 0 && price > 0) return { quantity: qty, price: price };
             }
+
             return null;
         };
 
@@ -3763,52 +3783,50 @@ async generateSaleId() {
 }
 ,
 async exportToExcel() {
-    console.log("🚀 เริ่มต้น Export: ตัดคอลัมน์ส่วนเกินออก และปรับปรุงหน่วยย่อย/ตัวคูณ...");
+    console.log("🚀 เริ่มต้น Export: ปรับความกว้างคอลัมน์ตามหัวข้ออัตโนมัติ...");
 
     if (!this.state.salesHistory || this.state.salesHistory.length === 0) {
         this.showInfoModal("ไม่มีข้อมูล", "ไม่มีข้อมูลประวัติการขายให้ Export", false);
         return;
     }
 
-    // 1. เตรียมข้อมูลสำหรับ Export (ตัดคอลัมน์ "หน่วยที่ขาย" และ "จำนวนที่ขาย" ออก)
+    // 1. เตรียมข้อมูลสำหรับ Export
     const dataToExport = this.state.salesHistory.flatMap(sale =>
         sale.items.map(item => {
             const quantitySold = item.quantity || 0;
             const unitSold = item.unit || 'หน่วย';
             const factor = item.conversionFactor || 1;
             
-            // ค่าพื้นฐานจากการคำนวณปกติ
             let finalTotalSmallUnits = item.totalBaseQuantity || (quantitySold * factor);
-            let finalBaseUnit = item.baseUnit || '';
+            
+            const productSetup = this.state.productsFromFirestore?.find(p => 
+                p.id === item.productId || 
+                p.productCode === item.productId || 
+                p.productCode === item.id
+            );
 
-            // --- [เช็คเงื่อนไขพิเศษจากฐานข้อมูลสินค้า] ---
-            const productSetup = this.state.productsFromFirestore.find(p => p.id === item.productId);
+            let finalBaseUnit = item.baseUnit || (productSetup ? productSetup.baseUnit : null) || unitSold;
+
             const specialUnitObj = productSetup?.pricingUnits?.find(u => u.parentUnit);
-
             if (specialUnitObj) {
-                // เงื่อนไขหน่วยพิเศษ: ใช้ตัวคูณมาตรฐาน
                 const multiplier = Math.round(1 / specialUnitObj.conversionFactor);
                 finalTotalSmallUnits = quantitySold * multiplier;    
                 finalBaseUnit = specialUnitObj.unitName; 
-            } 
-            else if (finalTotalSmallUnits % 1 !== 0) {
-                // เงื่อนไขทศนิยม: สลับไปใช้จำนวนที่ขายจริง
+            } else if (finalTotalSmallUnits % 1 !== 0) {
                 finalTotalSmallUnits = quantitySold;
                 finalBaseUnit = unitSold;
             }
-            // ------------------------------------------
 
             const totalItemValue = (item.price * quantitySold);
             const totalItemCost = (item.cost * quantitySold);
 
-            // คืนค่าเฉพาะคอลัมน์ที่ต้องการโชว์
             return {
                 'รหัสการขาย': sale.id,
                 'วันที่': new Date(sale.timestamp).toLocaleDateString('th-TH'),
                 'เวลา': new Date(sale.timestamp).toLocaleTimeString('th-TH'),
                 'ชื่อสินค้า': item.name || item.productName,
                 'จำนวนหน่วยย่อยรวม': finalTotalSmallUnits,
-                'หน่วยย่อย (Base)': finalBaseUnit,
+                'หน่วยย่อย (Base)': finalBaseUnit, 
                 'ราคา/หน่วยขาย': parseFloat(item.price.toFixed(2)),
                 'ต้นทุน/หน่วยขาย': parseFloat(item.cost.toFixed(2)),
                 'ยอดรวมขาย': parseFloat(totalItemValue.toFixed(2)),
@@ -3823,27 +3841,27 @@ async exportToExcel() {
     try {
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
-        // 2. --- [คำนวณความกว้างคอลัมน์แบบ Custom] ---
-        const calcWidth = (text) => {
-            if (!text) return 0;
-            return text.toString().length + (text.toString().match(/[ก-๙]/g) || []).length * 0.7;
+        // 2. --- [🌟 ลอจิกปรับความกว้างตามหัวคอลัมน์ 🌟] ---
+        const getCustomWidth = (text) => {
+            if (!text) return 10;
+            const str = text.toString();
+            // ภาษาไทยใช้พื้นที่มากกว่าปกติ (คูณ 1.2) ภาษาอังกฤษ/ตัวเลข (คูณ 1)
+            const thaiChars = (str.match(/[ก-๙]/g) || []).length;
+            const otherChars = str.length - thaiChars;
+            return (thaiChars * 1.8) + (otherChars * 1.1); 
         };
 
         const headers = Object.keys(dataToExport[0]);
-        const colWidths = headers.map((key) => {
-            if (key === 'ชื่อสินค้า') {
-                let maxWidth = calcWidth(key);
-                dataToExport.forEach(row => {
-                    const cellWidth = calcWidth(row[key]);
-                    if (cellWidth > maxWidth) maxWidth = cellWidth;
-                });
-                return { wch: maxWidth + 2 };
-            } else {
-                return { wch: calcWidth(key) + 2 };
-            }
+        const colWidths = headers.map((header) => {
+            // ยึดความกว้างจาก "ชื่อหัวคอลัมน์" เป็นฐาน
+            let headerWidth = getCustomWidth(header);
+            
+            // เผื่อความกว้างไว้เล็กน้อย (+4) เพื่อความสวยงามและไม่ให้ชิดขอบเกินไป
+            return { wch: Math.round(headerWidth + 4) };
         });
 
         worksheet['!cols'] = colWidths;
+        // ----------------------------------------------
 
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales_Report');
@@ -3851,7 +3869,7 @@ async exportToExcel() {
         const fileName = `Sales_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
         XLSX.writeFile(workbook, fileName);
         
-        console.log(`🎉 Export สำเร็จ: ตัดคอลัมน์ที่ไม่จำเป็นออกแล้ว`);
+        console.log(`🎉 Export สำเร็จ: ปรับความกว้างตามหัวคอลัมน์แล้ว`);
 
     } catch (e) {
         console.error("Export Excel Error:", e);
@@ -4627,4 +4645,3 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 
 </script>
-
