@@ -2023,6 +2023,7 @@ async importFromGoogleSheet(isAutomatic = false) {
         const parseTier = (val) => {
             if (!val) return null;
             let strVal = String(val).trim();
+
             if (strVal.match(/^\d{4}-\d{2}-\d{2}T/)) {
                 const d = new Date(strVal);
                 if (!isNaN(d.getTime())) {
@@ -2043,46 +2044,72 @@ async importFromGoogleSheet(isAutomatic = false) {
             return null;
         };
 
-        // 3. Helper: ค้นหาราคาของหน่วยนั้นๆ
-        const resolvePrice = (unitName, row, conversionFactor) => {
-            const targetUnit = String(unitName).trim().toLowerCase();
-            const price1 = parseNumberValue(row['ราคา 1']);
-            const priceUnit1 = row['หน่วย 1'] ? String(row['หน่วย 1']).trim().toLowerCase() : '';
-            const price2 = parseNumberValue(row['ราคา 2']);
-            const priceUnit2 = row['หน่วย 2'] ? String(row['หน่วย 2']).trim().toLowerCase() : '';
-
-            if (priceUnit1 === targetUnit && price1 > 0) return price1;
-            if (priceUnit2 === targetUnit && price2 > 0) return price2;
-            
-            if (conversionFactor === 1 && price1 > 0) return price1;
-            if (conversionFactor > 1 && price1 > 0) return price1 * conversionFactor; 
-            return 0; 
-        };
-
-        // ---------------------------------------------------------
-        // 🌟 4. NEW Helper: วิ่งหาต้นทุนของ "หน่วยนั้นๆ" โดยเฉพาะแบบแม่นยำ 100%
-        // ---------------------------------------------------------
+        // 3. Helper: ค้นหาต้นทุนที่แม่นยำ (รองรับหัวคอลัมน์ทุกรูปแบบ)
         const getCostForSpecificUnit = (unitName, row) => {
             if (!unitName) return 0;
-            const target = String(unitName).trim().toLowerCase();
+            const target = String(unitName).trim();
+            const targetLower = target.toLowerCase();
             
-            // ล้างอักขระพิเศษออกให้หมด เพื่อป้องกัน API ดึงชื่อคอลัมน์มาเพี้ยน
-            // ตัวอย่าง: "หน่วย/กล่อง" จะถูกบีบเหลือ "หน่วยกล่อง" แล้วนำไปเทียบกัน
-            const expectedKey = "หน่วย" + target.replace(/[\/\s_\-]/g, '');
+            if (row[target] !== undefined && row[target] !== '') {
+                const val = parseNumberValue(row[target]);
+                if (val > 0) return val;
+            }
+
+            const prefixTarget = 'หน่วย/' + target;
+            if (row[prefixTarget] !== undefined && row[prefixTarget] !== '') {
+                const val = parseNumberValue(row[prefixTarget]);
+                if (val > 0) return val;
+            }
+
+            const expectedKey1 = targetLower.replace(/[\/\s_\-()]/g, '');
+            const expectedKey2 = ("หน่วย" + targetLower).replace(/[\/\s_\-()]/g, '');
 
             for (const key in row) {
-                const k = String(key).trim().toLowerCase();
-                const normalizedKey = k.replace(/[\/\s_\-]/g, '');
-                
-                // ถ้าชื่อคอลัมน์ตรงกันเป๊ะ ดึงเลขมาใช้เลย!
-                if (normalizedKey === expectedKey) {
+                const normalizedKey = String(key).trim().toLowerCase().replace(/[\/\s_\-()]/g, '');
+                if (normalizedKey === expectedKey1 || normalizedKey === expectedKey2) {
                     const val = parseNumberValue(row[key]);
                     if (val > 0) return val;
                 }
             }
-            return 0; // คืนค่า 0 ถ้าหาคอลัมน์นี้ไม่เจอจริงๆ หรือช่องนั้นว่างเปล่า
+            return 0; 
         };
 
+        // ---------------------------------------------------------
+        // 🌟 4. NEW Helper: จับคู่ ราคา และ ต้นทุน ให้ตรงกันเป๊ะตามที่คุณต้องการ
+        // ---------------------------------------------------------
+        const getPriceAndCost = (unitName, row, factor) => {
+            const currentUnit = String(unitName).trim().toLowerCase();
+            const unit1 = String(row['หน่วย 1']).trim().toLowerCase();
+            const unit2 = String(row['หน่วย 2']).trim().toLowerCase();
+
+            let price = 0;
+            let cost = 0;
+
+            // 🎯 กฎข้อที่ 1: ถ้าตรงกับ "หน่วย 1" ให้ใช้ "ราคา 1" และวิ่งหาต้นทุนของ "หน่วย 1"
+            if (currentUnit === unit1 && unit1 !== '') {
+                price = parseNumberValue(row['ราคา 1']);
+                cost = getCostForSpecificUnit(row['หน่วย 1'], row);
+                return { price, cost };
+            }
+
+            // 🎯 กฎข้อที่ 2: ถ้าตรงกับ "หน่วย 2" ให้ใช้ "ราคา 2" และวิ่งหาต้นทุนของ "หน่วย 2"
+            if (currentUnit === unit2 && unit2 !== '') {
+                price = parseNumberValue(row['ราคา 2']);
+                cost = getCostForSpecificUnit(row['หน่วย 2'], row);
+                return { price, cost };
+            }
+
+            // 🎯 แผนสำรอง: กรณีไม่ได้กำหนดไว้ใน หน่วย 1 หรือ 2
+            cost = getCostForSpecificUnit(unitName, row);
+            const basePrice = parseNumberValue(row['ราคา 1']);
+            if (factor > 1 && basePrice > 0) price = basePrice * factor;
+
+            return { price, cost };
+        };
+
+        // =========================================================
+        // เริ่มวนลูปประมวลผลข้อมูลทีละแถว
+        // =========================================================
         for (const row of sheetData) {
             const code = row['รหัสสินค้า'] ? String(row['รหัสสินค้า']).trim() : null;
             if (!code) continue;
@@ -2097,15 +2124,13 @@ async importFromGoogleSheet(isAutomatic = false) {
             const pricingUnits = [];
             let baseCost = 0; 
 
-            // ============================================
-            // จัดการ "หน่วยนับที่ 1" (Base Unit) เช่น คู่, ชิ้น
-            // ============================================
+            // --- จัดการ "หน่วยนับที่ 1" ---
             if (row['หน่วยนับที่ 1']) {
                 const unitName = String(row['หน่วยนับที่ 1']).trim();
-                const price = resolvePrice(unitName, row, 1);
                 
-                // 🎯 วิ่งหาต้นทุนของหน่วยนี้โดยตรงจากคอลัมน์ "หน่วย/..."
-                baseCost = getCostForSpecificUnit(unitName, row); 
+                // 🎯 เรียกใช้ฟังก์ชันดึงราคาและต้นทุน
+                const { price, cost } = getPriceAndCost(unitName, row, 1);
+                baseCost = cost;
                 
                 let unitTiers = [...tiers];
                 if (!unitTiers.find(t => t.quantity === 1)) {
@@ -2116,67 +2141,60 @@ async importFromGoogleSheet(isAutomatic = false) {
                 pricingUnits.push({
                     unitName: unitName,
                     barcode: row['บาร์โค้ดในหน่วยนับ 1'] ? String(row['บาร์โค้ดในหน่วยนับ 1']).trim() : '',
-                    cost: baseCost,  // ต้นทุนจริงของหน่วยที่ 1
+                    cost: baseCost, 
                     conversionFactor: 1,
                     defaultPrice: price,
                     priceTiers: unitTiers
                 });
             }
 
-            // ============================================
-            // จัดการ "หน่วยนับที่ 2" เช่น กล่อง, แพ็ค
-            // ============================================
+            // --- จัดการ "หน่วยนับที่ 2" ---
             if (row['หน่วยนับที่ 2'] && row['ค่าการแปลงหน่วยที่ 2']) {
                 const unitName = String(row['หน่วยนับที่ 2']).trim();
                 const factor = parseNumberValue(row['ค่าการแปลงหน่วยที่ 2']) || 1;
-                const price = resolvePrice(unitName, row, factor);
-
-                // 🎯 วิ่งหาต้นทุนของหน่วยนี้โดยตรงจากคอลัมน์ "หน่วย/..."
-                let unitCost = getCostForSpecificUnit(unitName, row);
                 
-                // (ถ้าคอลัมน์ต้นทุนของหน่วยนี้ว่างเปล่าจริงๆ ค่อยเอาหน่วยเล็กมาคูณเป็นแผนฉุกเฉิน)
-                if (unitCost === 0 && baseCost > 0) unitCost = baseCost * factor;
+                // 🎯 เรียกใช้ฟังก์ชันดึงราคาและต้นทุน
+                let { price, cost } = getPriceAndCost(unitName, row, factor);
+                
+                if (cost === 0 && baseCost > 0) cost = baseCost * factor; // แผนฉุกเฉินถ้าลืมกรอกต้นทุนหน่วยใหญ่
 
                 pricingUnits.push({
                     unitName: unitName,
                     barcode: row['บาร์โค้ดในหน่วยนับ 2'] ? String(row['บาร์โค้ดในหน่วยนับ 2']).trim() : '',
-                    cost: unitCost, // ต้นทุนจริงของหน่วยที่ 2
+                    cost: cost, 
                     conversionFactor: factor,
                     defaultPrice: price,
                     priceTiers: [{ quantity: 1, price: price }]
                 });
             }
 
-            // ============================================
-            // จัดการ "หน่วยนับที่ 3" เช่น ลัง, กระสอบ
-            // ============================================
+            // --- จัดการ "หน่วยนับที่ 3" ---
             if (row['หน่วยนับที่ 3'] && row['ค่าการแปลงหน่วยที่ 3']) {
                 const unitName = String(row['หน่วยนับที่ 3']).trim();
                 const factor = parseNumberValue(row['ค่าการแปลงหน่วยที่ 3']) || 1;
-                const price = resolvePrice(unitName, row, factor);
-
-                // 🎯 วิ่งหาต้นทุนของหน่วยนี้โดยตรงจากคอลัมน์ "หน่วย/..."
-                let unitCost = getCostForSpecificUnit(unitName, row);
                 
-                if (unitCost === 0 && baseCost > 0) unitCost = baseCost * factor;
+                // 🎯 เรียกใช้ฟังก์ชันดึงราคาและต้นทุน
+                let { price, cost } = getPriceAndCost(unitName, row, factor);
+                
+                if (cost === 0 && baseCost > 0) cost = baseCost * factor; // แผนฉุกเฉินถ้าลืมกรอกต้นทุนหน่วยใหญ่
 
                 pricingUnits.push({
                     unitName: unitName,
                     barcode: row['บาร์โค้ดในหน่วยนับ 3'] ? String(row['บาร์โค้ดในหน่วยนับ 3']).trim() : '',
-                    cost: unitCost, // ต้นทุนจริงของหน่วยที่ 3
+                    cost: cost, 
                     conversionFactor: factor,
                     defaultPrice: price,
                     priceTiers: [{ quantity: 1, price: price }]
                 });
             }
 
-            // ประกอบร่างข้อมูลก่อนโยนเข้า Firebase
+            // ประกอบร่างข้อมูล
             const productData = {
                 productCode: code,
                 productName: row['ชื่อการค้า'] ? String(row['ชื่อการค้า']).trim() : 'ไม่มีชื่อ',
                 baseUnit: String(row['หน่วยนับที่ 1'] || 'ชิ้น').trim(),
                 mainSellingUnit: String(row['หน่วยขายหลัก'] || row['หน่วยนับที่ 1']).trim(),
-                cost: baseCost, // เก็บค่าต้นทุนของหน่วยหลักไว้ที่ Root ด้วยเผื่อระบบ POS บางตัวเรียกใช้
+                cost: baseCost, 
                 pricingUnits: pricingUnits,
                 updatedAt: now
             };
@@ -2205,7 +2223,7 @@ async importFromGoogleSheet(isAutomatic = false) {
         if (!isAutomatic) {
             document.getElementById('info-modal').style.display = 'none';
             this.setActiveOverlay(null);
-            setTimeout(() => alert("ซิงค์ข้อมูลจาก Sheets เรียบร้อยแล้ว!"), 100);
+            setTimeout(() => alert("ซิงค์ข้อมูลจาก Sheets และอัปเดตต้นทุนเรียบร้อยแล้ว!"), 100);
         }
     } catch (e) {
         console.error(e);
