@@ -2002,7 +2002,7 @@ async importFromGoogleSheet(isAutomatic = false) {
         const productsRef = this.getProductsCollectionRef();
         const now = new Date().toISOString();
 
-        // โหลดข้อมูลเก่าเพื่อเปรียบเทียบ (ลดการโหลดทับ)
+        // โหลดข้อมูลเก่าเพื่อเปรียบเทียบ
         const existingDocs = await api.getDocs(productsRef);
         const existingMap = new Map();
         existingDocs.forEach(doc => {
@@ -2012,50 +2012,38 @@ async importFromGoogleSheet(isAutomatic = false) {
 
         let operations = [];
 
-        // ---------------------------------------------------------
-        // 1. Helper: จัดการตัวเลขให้สะอาด (ตัดลูกน้ำทิ้ง ป้องกัน Error)
-        // ---------------------------------------------------------
+        // 1. Helper: จัดการตัวเลขให้สะอาด
         const parseNumberValue = (val) => {
             if (val === undefined || val === null || val === '') return 0;
             const cleanVal = String(val).replace(/,/g, '').replace(/[^\d.-]/g, '');
             return parseFloat(cleanVal) || 0;
         };
 
-        // ---------------------------------------------------------
-        // 2. Helper: ดึงข้อมูลโปรโมชั่น "ระดับที่ 1, 2, 3" (ดักจับ Timezone)
-        // ---------------------------------------------------------
+        // 2. Helper: ดึงข้อมูลโปรโมชั่น
         const parseTier = (val) => {
             if (!val) return null;
             let strVal = String(val).trim();
-
             if (strVal.match(/^\d{4}-\d{2}-\d{2}T/)) {
                 const d = new Date(strVal);
                 if (!isNaN(d.getTime())) {
                     const num1 = d.getMonth() + 1; 
                     const num2 = d.getDate();      
-                    
                     const qty = Math.min(num1, num2);
                     const price = Math.max(num1, num2);
-                    
                     if (qty > 0 && price > 0) return { quantity: qty, price: price };
                 }
             }
-
             strVal = strVal.replace(/\/\d{4}(?:\s.*)?$/, ''); 
-
             const parts = strVal.split(/[:=\/|]/);
             if (parts.length >= 2) {
                 const qty = parseNumberValue(parts[0]);
                 const price = parseNumberValue(parts[1]);
                 if (qty > 0 && price > 0) return { quantity: qty, price: price };
             }
-
             return null;
         };
 
-        // ---------------------------------------------------------
-        // 3. Helper: ค้นหาราคาแบบยืดหยุ่น ตามชื่อหน่วยที่คุณตั้ง
-        // ---------------------------------------------------------
+        // 3. Helper: ค้นหาราคา (🌟 แก้กลับเป็น 'การคูณ' เพื่อความถูกต้อง)
         const resolvePrice = (unitName, row, conversionFactor) => {
             const targetUnit = String(unitName).trim().toLowerCase();
             const price1 = parseNumberValue(row['ราคา 1']);
@@ -2065,17 +2053,37 @@ async importFromGoogleSheet(isAutomatic = false) {
 
             if (priceUnit1 === targetUnit && price1 > 0) return price1;
             if (priceUnit2 === targetUnit && price2 > 0) return price2;
+            
+            // แผนสำรอง: ราคาต่อหน่วยเล็ก * ค่าแปลงหน่วย
             if (conversionFactor === 1 && price1 > 0) return price1;
-            if (conversionFactor > 1 && price1 > 0) return price1 * conversionFactor;
+            if (conversionFactor > 1 && price1 > 0) return price1 * conversionFactor; 
 
             return 0; 
+        };
+
+        // 4. NEW Helper: ค้นหาต้นทุนแบบยืดหยุ่น ป้องกันชื่อคอลัมน์เพี้ยนตอนดึง API
+        const getCostForUnit = (unitName, row) => {
+            if (!unitName) return 0;
+            const target = String(unitName).trim().toLowerCase();
+            
+            // ลองหาแบบตรงตัว
+            if (row['หน่วย/' + target] !== undefined) return parseNumberValue(row['หน่วย/' + target]);
+            if (row['หน่วย/' + unitName] !== undefined) return parseNumberValue(row['หน่วย/' + unitName]);
+
+            // ถ้าหาไม่เจอ ให้สแกนหาคำว่า "หน่วย" ตามด้วยชื่อหน่วยนั้นๆ
+            for (const key in row) {
+                const k = String(key).toLowerCase();
+                if (k.includes('หน่วย') && k.includes(target)) {
+                    return parseNumberValue(row[key]);
+                }
+            }
+            return 0;
         };
 
         for (const row of sheetData) {
             const code = row['รหัสสินค้า'] ? String(row['รหัสสินค้า']).trim() : null;
             if (!code) continue;
             
-            // ดึงราคาโปรโมชั่นจากคอลัมน์ ระดับที่ 1-3
             const tiers = [];
             [row['ระดับที่ 1'], row['ระดับที่ 2'], row['ระดับที่ 3']].forEach(val => {
                 const parsed = parseTier(val);
@@ -2084,16 +2092,14 @@ async importFromGoogleSheet(isAutomatic = false) {
             tiers.sort((a, b) => b.quantity - a.quantity);
 
             const pricingUnits = [];
-            let baseCost = 0; // เก็บต้นทุนหน่วยหลักเอาไว้ใช้เป็นแผนสำรอง
+            let baseCost = 0; 
 
             // --- จัดการ "หน่วยนับที่ 1" (Base Unit) ---
             if (row['หน่วยนับที่ 1']) {
                 const unitName = String(row['หน่วยนับที่ 1']).trim();
                 const price = resolvePrice(unitName, row, 1);
                 
-                // 🌟 อัปเดต: ดึงต้นทุนจากคอลัมน์ "หน่วย/ชื่อหน่วย"
-                const costColName = 'หน่วย/' + unitName;
-                baseCost = parseNumberValue(row[costColName]);
+                baseCost = getCostForUnit(unitName, row); // ต้นทุนของ 1 ชิ้น
                 
                 let unitTiers = [...tiers];
                 if (!unitTiers.find(t => t.quantity === 1)) {
@@ -2117,9 +2123,8 @@ async importFromGoogleSheet(isAutomatic = false) {
                 const factor = parseNumberValue(row['ค่าการแปลงหน่วยที่ 2']) || 1;
                 const price = resolvePrice(unitName, row, factor);
 
-                // 🌟 อัปเดต: ดึงต้นทุนของหน่วยที่ 2 (ถ้าหาไม่เจอ ให้เอาต้นทุนหน่วย 1 * ค่าแปลง)
-                const costColName = 'หน่วย/' + unitName;
-                let unitCost = parseNumberValue(row[costColName]);
+                let unitCost = getCostForUnit(unitName, row);
+                // 🌟 แผนสำรอง: ถ้าหาต้นทุนกล่องไม่เจอ ให้เอา (ต้นทุนคู่ * จำนวนคู่ในกล่อง)
                 if (unitCost === 0 && baseCost > 0) unitCost = baseCost * factor;
 
                 pricingUnits.push({
@@ -2138,9 +2143,8 @@ async importFromGoogleSheet(isAutomatic = false) {
                 const factor = parseNumberValue(row['ค่าการแปลงหน่วยที่ 3']) || 1;
                 const price = resolvePrice(unitName, row, factor);
 
-                // 🌟 อัปเดต: ดึงต้นทุนของหน่วยที่ 3
-                const costColName = 'หน่วย/' + unitName;
-                let unitCost = parseNumberValue(row[costColName]);
+                let unitCost = getCostForUnit(unitName, row);
+                // 🌟 แผนสำรอง: ถ้าหาต้นทุนลังไม่เจอ ให้เอา (ต้นทุนคู่ * จำนวนคู่ในลัง)
                 if (unitCost === 0 && baseCost > 0) unitCost = baseCost * factor;
 
                 pricingUnits.push({
