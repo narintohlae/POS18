@@ -3456,21 +3456,6 @@ async confirmSale() {
         this.updateCartDisplay();
         this.hideHistoryModal();
     },
-    showDeleteConfirmModal(id, isTab) { 
-        const confirmBtn = document.getElementById('confirm-delete-btn');
-        const confirmText = document.getElementById('delete-confirm-text'); 
-        if (isTab) { 
-            const tabData = this.state.tabs.get(id);
-            confirmText.textContent = `คุณแน่ใจหรือไม่ว่าต้องการปิดบิล '${tabData.name}'?`; 
-            confirmBtn.onclick = () => { this.closeTab(id, false); this.hideDeleteConfirmModal(); };
-        } else { 
-            const sale = this.state.salesHistory.find(s => s.firestoreId === id);
-            confirmText.textContent = `คุณแน่ใจหรือไม่ว่าต้องการลบรายการขาย ID: ${sale ? sale.id : id}? การกระทำนี้ไม่สามารถย้อนกลับได้`; 
-            confirmBtn.onclick = () => this.executeDeleteSaleFromHistory(id);
-        } 
-        document.getElementById('delete-confirm-modal').style.display = 'flex'; 
-        setTimeout(() => confirmBtn.focus(), 50);
-    },
     hideDeleteConfirmModal() { document.getElementById('delete-confirm-modal').style.display = 'none'; },
     async executeDeleteSaleFromHistory(firestoreId) { 
         const {api, db} = window.firebaseServices;
