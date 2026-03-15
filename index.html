@@ -3799,18 +3799,10 @@ async exportToExcel() {
             
             // ค่าพื้นฐานจากการคำนวณปกติ
             let finalTotalSmallUnits = item.totalBaseQuantity || (quantitySold * factor);
-            
-            // --- [🌟 จุดที่แก้ไข: ดึงข้อมูลสินค้าจากฐานข้อมูลมาช่วยประมวลผล] ---
-            // ค้นหาสินค้าจาก id หรือ productCode (เผื่อโครงสร้างบิลเก็บค่าไว้ต่างกัน)
-            const productSetup = this.state.productsFromFirestore?.find(p => 
-                p.id === item.productId || 
-                p.productCode === item.productId || 
-                p.productCode === item.id
-            );
+            let finalBaseUnit = item.baseUnit || '';
 
-            // 🌟 แก้บั๊ก: ถ้าในบิลไม่มี baseUnit ให้ไปดึงจากฐานข้อมูลสินค้ามาใส่แทน ถ้าไม่มีอีกให้ใช้หน่วยที่ขาย
-            let finalBaseUnit = item.baseUnit || (productSetup ? productSetup.baseUnit : null) || unitSold;
-
+            // --- [เช็คเงื่อนไขพิเศษจากฐานข้อมูลสินค้า] ---
+            const productSetup = this.state.productsFromFirestore.find(p => p.id === item.productId);
             const specialUnitObj = productSetup?.pricingUnits?.find(u => u.parentUnit);
 
             if (specialUnitObj) {
@@ -3836,7 +3828,7 @@ async exportToExcel() {
                 'เวลา': new Date(sale.timestamp).toLocaleTimeString('th-TH'),
                 'ชื่อสินค้า': item.name || item.productName,
                 'จำนวนหน่วยย่อยรวม': finalTotalSmallUnits,
-                'หน่วยย่อย (Base)': finalBaseUnit, // <--- ตอนนี้จะมีข้อมูลมาลงเป๊ะๆ แล้วครับ
+                'หน่วยย่อย (Base)': finalBaseUnit,
                 'ราคา/หน่วยขาย': parseFloat(item.price.toFixed(2)),
                 'ต้นทุน/หน่วยขาย': parseFloat(item.cost.toFixed(2)),
                 'ยอดรวมขาย': parseFloat(totalItemValue.toFixed(2)),
