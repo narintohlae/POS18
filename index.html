@@ -3213,7 +3213,7 @@ async confirmSale() {
 
             // จัดการ UI หลังบันทึกสำเร็จ
             document.getElementById('payment-modal').style.display = 'none';
-            this.closeTab(this.state.activeTabId, true); // ปิดแท็บที่ขายเสร็จแล้ว
+            this.closeTab(this.state.activeTabId, false); // ปิดแท็บที่ขายเสร็จแล้ว
             if(window.updateDailySummary) window.updateDailySummary(); // อัปเดต Dashboard
             
         } catch(e) {
