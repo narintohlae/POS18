@@ -4107,8 +4107,7 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('stock-in-search-input').focus();
         };
 
-        // 5. เรนเดอร์ตารางรายการ
-        app.renderStockInList = function() {
+app.renderStockInList = function() {
             const tbody = document.getElementById('stock-in-list-body');
             if (this.state.stockInItems.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 2rem; color: var(--secondary-color);">ยังไม่มีรายการรับเข้า <br>ค้นหาหรือสแกนสินค้าด้านบน</td></tr>';
@@ -4117,13 +4116,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
             tbody.innerHTML = this.state.stockInItems.map((item, index) => {
                 const currentStock = (item.product.stockInBaseUnits / (item.product.pricingUnit.conversionFactor || 1)).toFixed(2);
-                return `
                 const costDisplay = !app.state.isRestrictedMode ? ` | ทุน: ${item.product.pricingUnit.cost || 0} บาท` : '';
-                    return `
+
+                return `
                     <tr style="border-bottom: 1px solid var(--border-color);">
                         <td style="padding: 8px 10px;">
                             <strong>${app.escapeHtml(item.product.display)}</strong>
-                            <div class="sub-text" style="font-size: 0.8em; color: gray;">รหัส: ${item.product.productCode}</div>
+                            <div class="sub-text" style="font-size: 0.8em; color: gray;">รหัส: ${item.product.productCode}${costDisplay}</div>
                         </td>
                         <td style="padding: 8px 10px; text-align: center; color: var(--secondary-color);">${currentStock}</td>
                         <td style="padding: 8px 10px; text-align: center;">
