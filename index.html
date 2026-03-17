@@ -2548,8 +2548,18 @@ showProductEditorModal(product) {
              this.renderPaginationControls(0);
              return;
         }
-        const headerHTML = `<div class="product-list-row product-list-header"><span>ชื่อสินค้า (รหัส)</span><span>สต็อก</span><span>หน่วยราคา</span><span>การกระทำ</span></div>`;
-        const rowsHTML = paginatedItems.map(p => `<div class="product-list-row"><div><strong>${p.productName}</strong><div class="sub-text">${p.productCode || ''}</div><div class="sub-text">${p.category || 'ไม่มีหมวดหมู่'}</div></div><div class="sub-text">${p.stockInBaseUnits} ${p.baseUnit}</div><div class="sub-text">${(p.pricingUnits || []).map(u => `${u.unitName} (${this.calculateItemTotal(u, 1)}฿)`).join(', ')}</div><div><button type="button" class="edit-history-btn" data-action="edit" data-id="${p.id}">แก้ไข</button><button type="button" class="delete-history-btn" data-action="delete" data-id="${p.id}">ลบ</button></div></div>`).join('');
+        const headerHTML = `<div class="product-list-row product-list-header"><span>ชื่อสินค้า (รหัส)</span><span>สต็อก</span><span>หน่วยราคา (ขาย/ทุน)</span><span>การกระทำ</span></div>`;
+        const rowsHTML = paginatedItems.map(p => {
+            // [แก้ไข] สร้างข้อความแสดงราคาขายและต้นทุน (ซ่อนต้นทุนถ้าไม่ใช่แอดมิน)
+            const priceAndCost = (p.pricingUnits || []).map(u => {
+                const sellPrice = this.calculateItemTotal(u, 1);
+                const costPrice = u.cost || 0;
+                const costDisplay = !this.state.isRestrictedMode ? ` | ทุน ${costPrice}฿` : '';
+                return `${u.unitName} (ขาย ${sellPrice}฿${costDisplay})`;
+            }).join('<br>'); // ใช้ <br> เพื่อขึ้นบรรทัดใหม่ให้ดูง่ายขึ้น
+
+            return `<div class="product-list-row"><div><strong>${p.productName}</strong><div class="sub-text">${p.productCode || ''}</div><div class="sub-text">${p.category || 'ไม่มีหมวดหมู่'}</div></div><div class="sub-text">${p.stockInBaseUnits} ${p.baseUnit}</div><div class="sub-text" style="color: var(--primary-color); line-height: 1.4;">${priceAndCost}</div><div><button type="button" class="edit-history-btn" data-action="edit" data-id="${p.id}">แก้ไข</button><button type="button" class="delete-history-btn" data-action="delete" data-id="${p.id}">ลบ</button></div></div>`;
+        }).join('');
         container.innerHTML = headerHTML + rowsHTML;
         this.renderPaginationControls(totalItems);
     },
@@ -2833,10 +2843,13 @@ updateCartDisplay() {
             const stock = parseFloat((item.productUnit.stockInBaseUnits / item.productUnit.pricingUnit.conversionFactor).toFixed(2));
             const cost = this.formatPrice(item.productUnit.pricingUnit.cost || 0);
 
+            // [เพิ่ม] ดึงเฉพาะแอดมินเท่านั้นที่จะเห็นต้นทุน
+            const costDisplay = !this.state.isRestrictedMode ? ` | ทุน: ${cost}` : '';
+
             // แปลง Input ตรงคอลัมน์ราคา ให้เป็น Div ธรรมดา
             li.innerHTML = `
                 <div class="col-seq">${idx + 1}</div>
-                <div class="col-name"><strong>${this.escapeHtml(item.productUnit.display)}</strong> <span class="sub-text">(เหลือ: ${stock})</span></div>
+                <div class="col-name"><strong>${this.escapeHtml(item.productUnit.display)}</strong> <span class="sub-text" style="color: var(--secondary-color);">(เหลือ: ${stock}${costDisplay})</span></div>
                 <div class="col-qty"><input type="number" class="item-input" value="${item.quantity}" onchange="POS_APP.editItemQuantity(${idx}, this.value)" onclick="this.select()"></div>
                 <div class="col-price" style="color:var(--secondary-color)">${this.formatPrice(pUnit)}</div>
                 <div class="col-total" style="font-weight:bold; color:var(--primary-color)">${parseFloat(total.toFixed(2))}</div>
@@ -4105,6 +4118,8 @@ document.addEventListener("DOMContentLoaded", function() {
             tbody.innerHTML = this.state.stockInItems.map((item, index) => {
                 const currentStock = (item.product.stockInBaseUnits / (item.product.pricingUnit.conversionFactor || 1)).toFixed(2);
                 return `
+                const costDisplay = !app.state.isRestrictedMode ? ` | ทุน: ${item.product.pricingUnit.cost || 0} บาท` : '';
+                    return `
                     <tr style="border-bottom: 1px solid var(--border-color);">
                         <td style="padding: 8px 10px;">
                             <strong>${app.escapeHtml(item.product.display)}</strong>
