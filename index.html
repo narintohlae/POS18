@@ -2831,9 +2831,16 @@ updateCartDisplay() {
             const li = document.createElement('li');
             li.dataset.cartItemId = item.cartItemId;
 
-            // บังคับคำนวณราคาจาก Master Data เสมอ ไม่มี Overrides
-            let total = this.calculateItemTotal(item.productUnit.pricingUnit, item.quantity);
-            let pUnit = item.quantity > 0 ? total / item.quantity : 0;
+// รองรับการใช้ราคาที่ผู้ใช้แก้ไขเอง (priceOverride)
+            let total = 0;
+            let pUnit = 0;
+            if (item.priceOverride !== undefined) {
+                pUnit = item.priceOverride;
+                total = pUnit * item.quantity;
+            } else {
+                total = this.calculateItemTotal(item.productUnit.pricingUnit, item.quantity);
+                pUnit = item.quantity > 0 ? total / item.quantity : 0;
+            }
             subtotal += total;
 
             const promotions = item.productUnit.pricingUnit.priceTiers?.filter(t => t.quantity > 1);
@@ -2861,8 +2868,12 @@ updateCartDisplay() {
                 <div class="col-seq">${idx + 1}</div>
                 <div class="col-name"><strong>${this.escapeHtml(item.productUnit.display)}</strong> <span class="sub-text" style="color: var(--secondary-color);">(เหลือ: ${stock}${costDisplay})</span></div>
                 <div class="col-qty"><input type="number" class="item-input" value="${item.quantity}" onchange="POS_APP.editItemQuantity(${idx}, this.value)" onclick="this.select()"></div>
-                <div class="col-price" style="color:var(--secondary-color)">${this.formatPrice(pUnit)}</div>
-                <div class="col-total" style="font-weight:bold; color:var(--primary-color)">${parseFloat(total.toFixed(2))}</div>
+<div class="col-price">
+                    <input type="number" step="any" class="item-input" value="${parseFloat(pUnit.toFixed(2))}" onchange="POS_APP.editItemPrice(${idx}, this.value)" onclick="this.select()" style="width: 100%; color:var(--secondary-color);">
+                </div>
+                <div class="col-total">
+                    <input type="number" step="any" class="item-input" value="${parseFloat(total.toFixed(2))}" onchange="POS_APP.editItemTotal(${idx}, this.value)" onclick="this.select()" style="width: 100%; font-weight:bold; color:var(--primary-color);">
+                </div>
                 <div class="col-delete"><button class="delete-item-btn" onclick="POS_APP.deleteItemFromCart(${idx})"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
             `;
             container.appendChild(li);
@@ -2885,6 +2896,27 @@ updateCartDisplay() {
             delete item.priceOverride;
         }
         this.updateCartDisplay();
+    },
+
+    // ฟังก์ชันใหม่: สำหรับแก้ไขราคา/หน่วยโดยตรง
+    editItemPrice(index, newPriceStr) {
+        const cart = this.getActiveCart();
+        const item = cart[index];
+        if (!item) return;
+
+        // กรณีที่ลบตัวเลขออกจนหมด (ว่าง) -> ให้รีเซ็ตกลับไปใช้ราคาปกติของระบบ
+        if (newPriceStr === '') {
+            delete item.priceOverride;
+        } else {
+            const newPrice = parseFloat(newPriceStr);
+            if (!isNaN(newPrice) && newPrice >= 0) {
+                item.priceOverride = newPrice;
+            }
+        }
+        
+        this.updateCartDisplay();
+        this.focusSearchIfReady();
+        if (this.saveStateToStorage) this.saveStateToStorage();
     },
 
     showInfoModal(title, text, isError = false) { 
@@ -3180,9 +3212,16 @@ async confirmSale() {
                 const fac = item.productUnit.pricingUnit.conversionFactor || 1;
                 const cost = item.productUnit.pricingUnit.cost || 0;
                 
-                // บังคับคำนวณราคาจาก Master Data เท่านั้น (รวมการคำนวณโปรโมชั่นขั้นบันไดแล้ว)
-                const totalItemPrice = this.calculateItemTotal(item.productUnit.pricingUnit, item.quantity);
-                const pricePerUnit = totalItemPrice / item.quantity;
+// รองรับราคาที่แก้ไขเอง (priceOverride) ก่อนบันทึกลงฐานข้อมูล
+                let pricePerUnit = 0;
+                let totalItemPrice = 0;
+                if (item.priceOverride !== undefined) {
+                    pricePerUnit = item.priceOverride;
+                    totalItemPrice = pricePerUnit * item.quantity;
+                } else {
+                    totalItemPrice = this.calculateItemTotal(item.productUnit.pricingUnit, item.quantity);
+                    pricePerUnit = totalItemPrice / item.quantity;
+                }
                 
                 // หักสต็อก (แปลงจำนวนที่ขายกลับไปเป็นหน่วยเล็กสุดเพื่อตัดสต็อก)
                 const ref = api.doc(this.getProductsCollectionRef(), item.productUnit.productId);
