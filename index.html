@@ -1842,7 +1842,25 @@ updateAuthStatus(){
         document.getElementById('export-excel-btn').addEventListener('click', this.exportToExcel.bind(this));
         document.getElementById('clear-all-history-btn').addEventListener('click', this.showClearOptionsModal.bind(this));
         document.getElementById('cash-received-input').addEventListener('input', this.calculateChange.bind(this));
-        document.getElementById('cash-received-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.calculateChange(); document.getElementById('confirm-sale-btn').focus(); }});
+        document.getElementById('cash-received-input').addEventListener('keydown', (e) => { 
+    if (e.key === 'Enter') { 
+        e.preventDefault(); 
+        this.calculateChange(); 
+        
+        // ดึงค่ายอดสุทธิและเงินที่รับมา
+        const total = parseFloat(document.getElementById('payment-total-final').textContent);
+        const cash = parseFloat(e.target.value) || 0;
+        
+        // เช็คว่ารับเงินมาพอหรือยัง
+        if (cash >= total) {
+            // ถ้าเงินพอแล้ว (ทอนเงินได้) ให้ย้ายไปโฟกัสที่ปุ่มยืนยัน
+            document.getElementById('confirm-sale-btn').focus(); 
+        } else {
+            // ถ้าเงินยังไม่พอ ให้คลุมดำ (select) ตัวเลขเดิมในช่องเพื่อให้พิมพ์ทับได้ทันที
+            e.target.select();
+        }
+    }
+});
         document.getElementById('confirm-sale-btn').addEventListener('click', this.confirmSale.bind(this));
         document.getElementById('cancel-payment-btn').addEventListener('click', this.hidePaymentModal.bind(this));
         document.getElementById('cancel-delete-btn').addEventListener('click', this.hideDeleteConfirmModal.bind(this));
