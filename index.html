@@ -3253,16 +3253,15 @@ async confirmSale() {
         document.getElementById('confirm-sale-btn').disabled = true;
 
         try {
-            const { api, db } = window.firebaseServices;
-            const batch = api.writeBatch(db);
-            const saleId = `F-${Date.now()}`; // สร้างรหัสบิล
+            // สร้างรหัสบิล
+            const saleId = await this.generateSaleId(); 
             
-            // ประมวลผลสินค้าแต่ละรายการในตะกร้า
+            // ประมวลผลสินค้าแต่ละรายการในตะกร้า (ตัดการหักสต็อกใน Firebase ออกแล้ว)
             const items = tab.cart.map(item => {
                 const fac = item.productUnit.pricingUnit.conversionFactor || 1;
                 const cost = item.productUnit.pricingUnit.cost || 0;
                 
-// รองรับราคาที่แก้ไขเอง (priceOverride) ก่อนบันทึกลงฐานข้อมูล
+                // รองรับราคาที่แก้ไขเอง (priceOverride)
                 let pricePerUnit = 0;
                 let totalItemPrice = 0;
                 if (item.priceOverride !== undefined) {
@@ -3272,10 +3271,6 @@ async confirmSale() {
                     totalItemPrice = this.calculateItemTotal(item.productUnit.pricingUnit, item.quantity);
                     pricePerUnit = totalItemPrice / item.quantity;
                 }
-                
-                // หักสต็อก (แปลงจำนวนที่ขายกลับไปเป็นหน่วยเล็กสุดเพื่อตัดสต็อก)
-                const ref = api.doc(this.getProductsCollectionRef(), item.productUnit.productId);
-                batch.update(ref, { stockInBaseUnits: api.increment(-(item.quantity * fac)) });
 
                 return {
                     productId: item.productUnit.productId, 
@@ -3285,39 +3280,66 @@ async confirmSale() {
                     quantity: item.quantity, 
                     conversionFactor: fac,
                     baseUnit: item.productUnit.baseUnit || "",
-                    price: pricePerUnit,         // ราคาต่อหน่วยที่ผ่านการคำนวณส่วนลดโปรโมชั่นมาแล้ว
-                    totalPrice: totalItemPrice,  // ราคารวมของรายการนี้
+                    price: pricePerUnit,         
+                    totalPrice: totalItemPrice,  
                     cost: cost
                 };
             });
 
-            // ข้อมูลสำหรับบันทึกประวัติการขาย
+            // เตรียมข้อมูลสำหรับบันทึกลง Google Sheets
             const saleDoc = {
-                id: saleId, 
+                orderId: saleId, 
+                id: saleId,      
                 timestamp: new Date().toISOString(), 
                 items: items,
                 subtotal: totalFinal + tab.discount, 
                 discount: tab.discount, 
-                total: totalFinal,
+                totalAmount: totalFinal, 
+                total: totalFinal,       
                 cashReceived: cash, 
-                change: cash - totalFinal
+                change: cash - totalFinal,
+                cashier: this.state.currentUser || 'System'
             };
 
-            // บันทึกลง Firestore แบบ Batch
-            batch.set(api.doc(this.getSalesHistoryCollectionRef()), saleDoc);
-            await batch.commit();
+            console.log("กำลังส่งข้อมูลบิลไปที่ Google Sheets...");
+            document.getElementById('confirm-sale-btn').textContent = "กำลังบันทึกลง Sheet...";
+            
+            // 🚀 ส่ง Request ไปยัง Google Apps Script
+            const response = await fetch(this.config.googleSheetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8' 
+                },
+                body: JSON.stringify(saleDoc),
+                redirect: 'follow' 
+            });
+            
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || "บันทึกลง Google Sheets ไม่สำเร็จ");
+            }
+
+            // ❌ ไม่มีการเรียกใช้ batch.commit() ของ Firebase อีกต่อไปแล้ว
+
+            // นำข้อมูลบิลยัดใส่หน้า "ประวัติการขาย" บนเว็บทันที 
+            this.state.salesHistory.unshift(saleDoc);
 
             // จัดการ UI หลังบันทึกสำเร็จ
             document.getElementById('payment-modal').style.display = 'none';
             this.closeTab(this.state.activeTabId, false); // ปิดแท็บที่ขายเสร็จแล้ว
             if(window.updateDailySummary) window.updateDailySummary(); // อัปเดต Dashboard
+            this.updateHistoryDisplay(); // อัปเดตตารางประวัติการขาย
             
         } catch(e) {
-            alert("Error: " + e.message);
+            console.error("Sale Error:", e);
+            alert("Error: ขัดข้อง ไม่สามารถบันทึกบิลได้ กรุณาลองใหม่ \n" + e.message);
         } finally {
             this.state.isSaving = false;
-            document.getElementById('confirm-sale-btn').disabled = false;
-            this.focusSearchIfReady(); // โฟกัสกลับไปที่ช่องค้นหา เพื่อให้พร้อมยิงบาร์โค้ดบิลใหม่ทันที
+            const confirmBtn = document.getElementById('confirm-sale-btn');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = "ยืนยันการขาย (Enter)";
+            this.focusSearchIfReady(); 
         }
     },
 
