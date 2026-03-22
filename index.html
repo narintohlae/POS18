@@ -3951,12 +3951,16 @@ async exportToExcel() {
             const totalItemValue = (item.price * quantitySold);
             const totalItemCost = (item.cost * quantitySold);
 
+            // 🟢 ดึงชื่อดิบมา แล้วใช้ Regex ตัดวงเล็บที่อยู่ท้ายสุดออก
+            let rawName = item.productName || item.name || "ไม่มีชื่อสินค้า";
+            let cleanName = String(rawName).replace(/\s*\([^)]+\)$/, '').trim();
+
             // สร้าง Object ข้อมูลเตรียมไว้ก่อน
             const rowData = {
                 'รหัสการขาย': sale.id,
                 'วันที่': new Date(sale.timestamp).toLocaleDateString('th-TH'),
                 'เวลา': new Date(sale.timestamp).toLocaleTimeString('th-TH'),
-                'ชื่อสินค้า': item.name || item.productName,
+                'ชื่อสินค้า': cleanName,  // 🟢 ใช้ชื่อที่คลีนแล้ว
                 'จำนวนหน่วยย่อยรวม': finalTotalSmallUnits,
                 'หน่วยย่อย (Base)': finalBaseUnit, 
                 'ราคา/หน่วยขาย': parseFloat(item.price.toFixed(2)),
