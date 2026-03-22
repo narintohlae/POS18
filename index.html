@@ -2193,9 +2193,9 @@ async importFromGoogleSheet(isAutomatic = false) {
                 let cost = getCostForSpecificUnit(unitName, row);
                 if (cost === 0 && baseCost > 0) cost = baseCost * factor;
 
-                // 🎯 ถ้าระบุ "ราคา 2" ให้ใช้ราคา 2, ถ้าว่างไว้ ให้คำนวณเอา (ราคา 1 x ค่าการแปลงหน่วย)
+                // 🎯 ถ้าระบุ "ราคา 2" ให้ใช้ราคา 2, ถ้าว่างไว้ ให้ใช้ "ราคา 1" เป็นค่าเริ่มต้น (ลบการคูณ factor ออกแล้ว)
                 const explicitPrice2 = parseNumberValue(getVal(row, 'ราคา 2'));
-                const price2 = explicitPrice2 > 0 ? explicitPrice2 : (basePrice * factor);
+                const price2 = explicitPrice2 > 0 ? explicitPrice2 : basePrice;
 
                 pricingUnits.push({
                     unitName: unitName,
@@ -2216,9 +2216,9 @@ async importFromGoogleSheet(isAutomatic = false) {
                 let cost = getCostForSpecificUnit(unitName, row);
                 if (cost === 0 && baseCost > 0) cost = baseCost * factor;
 
-                // 🎯 ถ้าระบุ "ราคา 3" ให้ใช้ราคา 3, ถ้าว่างไว้ ให้คำนวณเอา (ราคา 1 x ค่าการแปลงหน่วย)
+                // 🎯 ถ้าระบุ "ราคา 3" ให้ใช้ราคา 3, ถ้าว่างไว้ ให้ใช้ "ราคา 1" เป็นค่าเริ่มต้น (ลบการคูณ factor ออกแล้ว)
                 const explicitPrice3 = parseNumberValue(getVal(row, 'ราคา 3'));
-                const price3 = explicitPrice3 > 0 ? explicitPrice3 : (basePrice * factor);
+                const price3 = explicitPrice3 > 0 ? explicitPrice3 : basePrice;
 
                 pricingUnits.push({
                     unitName: unitName,
