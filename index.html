@@ -2193,9 +2193,9 @@ async importFromGoogleSheet(isAutomatic = false) {
                 let cost = getCostForSpecificUnit(unitName, row);
                 if (cost === 0 && baseCost > 0) cost = baseCost * factor;
 
-                // 🎯 ถ้าระบุ "ราคา 2" ให้ใช้ราคา 2, ถ้าว่างไว้ ให้ใช้ "ราคา 1" เป็นค่าเริ่มต้น (ลบการคูณ factor ออกแล้ว)
+                // 🎯 ถ้าระบุ "ราคา 2" ให้ใช้ราคา 2, ถ้าว่างไว้ ให้คำนวณเอา (ราคา 1 x ค่าการแปลงหน่วย)
                 const explicitPrice2 = parseNumberValue(getVal(row, 'ราคา 2'));
-                const price2 = explicitPrice2 > 0 ? explicitPrice2 : basePrice;
+                const price2 = explicitPrice2 > 0 ? explicitPrice2 : (basePrice * factor);
 
                 pricingUnits.push({
                     unitName: unitName,
@@ -2216,9 +2216,9 @@ async importFromGoogleSheet(isAutomatic = false) {
                 let cost = getCostForSpecificUnit(unitName, row);
                 if (cost === 0 && baseCost > 0) cost = baseCost * factor;
 
-                // 🎯 ถ้าระบุ "ราคา 3" ให้ใช้ราคา 3, ถ้าว่างไว้ ให้ใช้ "ราคา 1" เป็นค่าเริ่มต้น (ลบการคูณ factor ออกแล้ว)
+                // 🎯 ถ้าระบุ "ราคา 3" ให้ใช้ราคา 3, ถ้าว่างไว้ ให้คำนวณเอา (ราคา 1 x ค่าการแปลงหน่วย)
                 const explicitPrice3 = parseNumberValue(getVal(row, 'ราคา 3'));
-                const price3 = explicitPrice3 > 0 ? explicitPrice3 : basePrice;
+                const price3 = explicitPrice3 > 0 ? explicitPrice3 : (basePrice * factor);
 
                 pricingUnits.push({
                     unitName: unitName,
@@ -3253,15 +3253,16 @@ async confirmSale() {
         document.getElementById('confirm-sale-btn').disabled = true;
 
         try {
-            // สร้างรหัสบิล
-            const saleId = await this.generateSaleId(); 
+            const { api, db } = window.firebaseServices;
+            const batch = api.writeBatch(db);
+            const saleId = `F-${Date.now()}`; // สร้างรหัสบิล
             
-            // ประมวลผลสินค้าแต่ละรายการในตะกร้า (ตัดการหักสต็อกใน Firebase ออกแล้ว)
+            // ประมวลผลสินค้าแต่ละรายการในตะกร้า
             const items = tab.cart.map(item => {
                 const fac = item.productUnit.pricingUnit.conversionFactor || 1;
                 const cost = item.productUnit.pricingUnit.cost || 0;
                 
-                // รองรับราคาที่แก้ไขเอง (priceOverride)
+// รองรับราคาที่แก้ไขเอง (priceOverride) ก่อนบันทึกลงฐานข้อมูล
                 let pricePerUnit = 0;
                 let totalItemPrice = 0;
                 if (item.priceOverride !== undefined) {
@@ -3271,6 +3272,10 @@ async confirmSale() {
                     totalItemPrice = this.calculateItemTotal(item.productUnit.pricingUnit, item.quantity);
                     pricePerUnit = totalItemPrice / item.quantity;
                 }
+                
+                // หักสต็อก (แปลงจำนวนที่ขายกลับไปเป็นหน่วยเล็กสุดเพื่อตัดสต็อก)
+                const ref = api.doc(this.getProductsCollectionRef(), item.productUnit.productId);
+                batch.update(ref, { stockInBaseUnits: api.increment(-(item.quantity * fac)) });
 
                 return {
                     productId: item.productUnit.productId, 
@@ -3279,67 +3284,39 @@ async confirmSale() {
                     unit: item.productUnit.pricingUnit.unitName, 
                     quantity: item.quantity, 
                     conversionFactor: fac,
-                    baseUnit: item.productUnit.baseUnit || "",
-                    price: pricePerUnit,         
-                    totalPrice: totalItemPrice,  
+                    price: pricePerUnit,         // ราคาต่อหน่วยที่ผ่านการคำนวณส่วนลดโปรโมชั่นมาแล้ว
+                    totalPrice: totalItemPrice,  // ราคารวมของรายการนี้
                     cost: cost
                 };
             });
 
-            // เตรียมข้อมูลสำหรับบันทึกลง Google Sheets
+            // ข้อมูลสำหรับบันทึกประวัติการขาย
             const saleDoc = {
-                orderId: saleId, 
-                id: saleId,      
+                id: saleId, 
                 timestamp: new Date().toISOString(), 
                 items: items,
                 subtotal: totalFinal + tab.discount, 
                 discount: tab.discount, 
-                totalAmount: totalFinal, 
-                total: totalFinal,       
+                total: totalFinal,
                 cashReceived: cash, 
-                change: cash - totalFinal,
-                cashier: this.state.currentUser || 'System'
+                change: cash - totalFinal
             };
 
-            console.log("กำลังส่งข้อมูลบิลไปที่ Google Sheets...");
-            document.getElementById('confirm-sale-btn').textContent = "กำลังบันทึกลง Sheet...";
-            
-            // 🚀 ส่ง Request ไปยัง Google Apps Script
-            const response = await fetch(this.config.googleSheetUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8' 
-                },
-                body: JSON.stringify(saleDoc),
-                redirect: 'follow' 
-            });
-            
-            const result = await response.json();
-
-            if (!result.success) {
-                throw new Error(result.error || "บันทึกลง Google Sheets ไม่สำเร็จ");
-            }
-
-            // ❌ ไม่มีการเรียกใช้ batch.commit() ของ Firebase อีกต่อไปแล้ว
-
-            // นำข้อมูลบิลยัดใส่หน้า "ประวัติการขาย" บนเว็บทันที 
-            this.state.salesHistory.unshift(saleDoc);
+            // บันทึกลง Firestore แบบ Batch
+            batch.set(api.doc(this.getSalesHistoryCollectionRef()), saleDoc);
+            await batch.commit();
 
             // จัดการ UI หลังบันทึกสำเร็จ
             document.getElementById('payment-modal').style.display = 'none';
             this.closeTab(this.state.activeTabId, false); // ปิดแท็บที่ขายเสร็จแล้ว
             if(window.updateDailySummary) window.updateDailySummary(); // อัปเดต Dashboard
-            this.updateHistoryDisplay(); // อัปเดตตารางประวัติการขาย
             
         } catch(e) {
-            console.error("Sale Error:", e);
-            alert("Error: ขัดข้อง ไม่สามารถบันทึกบิลได้ กรุณาลองใหม่ \n" + e.message);
+            alert("Error: " + e.message);
         } finally {
             this.state.isSaving = false;
-            const confirmBtn = document.getElementById('confirm-sale-btn');
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = "ยืนยันการขาย (Enter)";
-            this.focusSearchIfReady(); 
+            document.getElementById('confirm-sale-btn').disabled = false;
+            this.focusSearchIfReady(); // โฟกัสกลับไปที่ช่องค้นหา เพื่อให้พร้อมยิงบาร์โค้ดบิลใหม่ทันที
         }
     },
 
@@ -3973,16 +3950,12 @@ async exportToExcel() {
             const totalItemValue = (item.price * quantitySold);
             const totalItemCost = (item.cost * quantitySold);
 
-            // 🟢 ดึงชื่อดิบมา แล้วใช้ Regex ตัดวงเล็บที่อยู่ท้ายสุดออก
-            let rawName = item.productName || item.name || "ไม่มีชื่อสินค้า";
-            let cleanName = String(rawName).replace(/\s*\([^)]+\)$/, '').trim();
-
             // สร้าง Object ข้อมูลเตรียมไว้ก่อน
             const rowData = {
                 'รหัสการขาย': sale.id,
                 'วันที่': new Date(sale.timestamp).toLocaleDateString('th-TH'),
                 'เวลา': new Date(sale.timestamp).toLocaleTimeString('th-TH'),
-                'ชื่อสินค้า': cleanName,  // 🟢 ใช้ชื่อที่คลีนแล้ว
+                'ชื่อสินค้า': item.name || item.productName,
                 'จำนวนหน่วยย่อยรวม': finalTotalSmallUnits,
                 'หน่วยย่อย (Base)': finalBaseUnit, 
                 'ราคา/หน่วยขาย': parseFloat(item.price.toFixed(2)),
