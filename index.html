@@ -2050,7 +2050,7 @@ const response = await fetch(this.config.googleSheetUrl + '?t=' + new Date().get
 
 async importFromGoogleSheet(isAutomatic = false) {
     if (!isAutomatic) {
-        this.showInfoModal("กำลังนำเข้า...", "ระบบกำลังตรวจสอบและอัปเดตเฉพาะสินค้าที่มีการเปลี่ยนแปลง...");
+        this.showInfoModal("กำลังนำเข้า...", "ระบบกำลังตรวจสอบและอัปเดตข้อมูลสินค้า บาร์โค้ด และโปรโมชั่น...");
     }
 
     try {
@@ -2067,6 +2067,7 @@ async importFromGoogleSheet(isAutomatic = false) {
         const existingMap = new Map();
         existingDocs.forEach(doc => {
             const d = doc.data();
+            // อ้างอิงจากรหัสสินค้าหลักเท่านั้น
             if (d.productCode) existingMap.set(String(d.productCode).trim(), { id: doc.id, data: d });
         });
 
@@ -2117,7 +2118,8 @@ async importFromGoogleSheet(isAutomatic = false) {
         // เริ่มวนลูปประมวลผลข้อมูลทีละแถวจาก Sheets
         // =========================================================
         for (const row of sheetData) {
-            let finalCode = String(getVal(row, 'รหัสสินค้า') || getVal(row, 'บาร์โค้ดในหน่วยนับที่1') || getVal(row, 'ชื่อการค้า') || '').trim();
+            // 🎯 ให้ รหัสสินค้า เป็นตัวอ้างอิงหลัก (ห้ามซ้ำ)
+            let finalCode = String(getVal(row, 'รหัสสินค้า') || getVal(row, 'ชื่อการค้า') || '').trim();
             if (!finalCode) continue;
 
             const name = String(getVal(row, 'ชื่อการค้า') || 'ไม่มีชื่อ').trim();
@@ -2140,12 +2142,13 @@ async importFromGoogleSheet(isAutomatic = false) {
             if (allTiers.length === 0 && basePrice <= 0) allTiers.push({ quantity: 1, price: 0 });
             allTiers.sort((a, b) => b.quantity - a.quantity);
 
+            // 🎯 จัดการ "หน่วยที่ 1"
             const unit1 = String(getVal(row, 'หน่วยนับที่1') || 'ชิ้น').trim();
-            const barcode1 = String(getVal(row, 'บาร์โค้ดในหน่วยนับที่1') || finalCode).trim();
+            const barcode1 = String(getVal(row, 'บาร์โค้ดในหน่วยนับที่1') || finalCode).trim(); // ✨ ดึงบาร์โค้ดหน่วยที่ 1
             
             pricingUnits.push({
                 unitName: unit1,
-                barcode: barcode1,
+                barcode: barcode1, // ✨ บันทึกบาร์โค้ดให้สแกนได้
                 cost: 0, 
                 conversionFactor: 1,
                 defaultPrice: basePrice,
@@ -2158,11 +2161,11 @@ async importFromGoogleSheet(isAutomatic = false) {
                 const factor2 = parseNumberValue(getVal(row, 'ค่าการแปลงหน่วยที่2')) || 1;
                 const explicitPrice2 = parseNumberValue(getVal(row, 'ราคา2'));
                 const price2 = explicitPrice2 > 0 ? explicitPrice2 : (basePrice * factor2);
-                const barcode2 = String(getVal(row, 'บาร์โค้ดในหน่วยนับที่2') || '').trim();
+                const barcode2 = String(getVal(row, 'บาร์โค้ดในหน่วยนับที่2') || '').trim(); // ✨ ดึงบาร์โค้ดหน่วยที่ 2
 
                 pricingUnits.push({
                     unitName: unit2,
-                    barcode: barcode2,
+                    barcode: barcode2, // ✨ บันทึกบาร์โค้ดให้สแกนได้
                     cost: 0, 
                     conversionFactor: factor2,
                     defaultPrice: price2,
@@ -2176,11 +2179,11 @@ async importFromGoogleSheet(isAutomatic = false) {
                 const factor3 = parseNumberValue(getVal(row, 'ค่าการแปลงหน่วยที่3')) || 1;
                 const explicitPrice3 = parseNumberValue(getVal(row, 'ราคา3'));
                 const price3 = explicitPrice3 > 0 ? explicitPrice3 : (basePrice * factor3);
-                const barcode3 = String(getVal(row, 'บาร์โค้ดในหน่วยนับที่3') || '').trim();
+                const barcode3 = String(getVal(row, 'บาร์โค้ดในหน่วยนับที่3') || '').trim(); // ✨ ดึงบาร์โค้ดหน่วยที่ 3
 
                 pricingUnits.push({
                     unitName: unit3,
-                    barcode: barcode3,
+                    barcode: barcode3, // ✨ บันทึกบาร์โค้ดให้สแกนได้
                     cost: 0, 
                     conversionFactor: factor3,
                     defaultPrice: price3,
@@ -2190,12 +2193,12 @@ async importFromGoogleSheet(isAutomatic = false) {
 
             // เตรียมข้อมูลที่เพิ่งอ่านมา
             const productData = {
-                productCode: finalCode,
+                productCode: finalCode, // รหัสหลักสำหรับอ้างอิงและตรวจสอบซ้ำ
                 productName: name,
                 baseUnit: unit1,
                 mainSellingUnit: unit1,
                 cost: 0, 
-                pricingUnits: pricingUnits,
+                pricingUnits: pricingUnits, // บาร์โค้ดแต่ละระดับอยู่ในนี้
                 updatedAt: now
             };
 
@@ -2251,8 +2254,8 @@ async importFromGoogleSheet(isAutomatic = false) {
             document.getElementById('info-modal').style.display = 'none';
             this.setActiveOverlay(null);
             
-            // แสดงผลลัพธ์ว่าเซฟโควตาไปได้เท่าไหร่
-            const resultMsg = `ซิงค์เสร็จสิ้น!\nเพิ่มใหม่: ${newCount} รายการ\nอัปเดต: ${updateCount} รายการ\nข้าม (ข้อมูลไม่เปลี่ยน): ${skipCount} รายการ (ช่วยประหยัดโควตา!)`;
+            // แสดงผลลัพธ์ว่าเซฟโควตาไปได้เท่าไหร่ และอัปเดตบาร์โค้ดสำเร็จ
+            const resultMsg = `ซิงค์เสร็จสิ้น!\nเพิ่มใหม่: ${newCount} รายการ\nอัปเดต: ${updateCount} รายการ\nข้าม: ${skipCount} รายการ (ช่วยประหยัดโควตา!)\n\n✅ อัปเดตบาร์โค้ดให้พร้อมสแกนแล้ว!`;
             setTimeout(() => alert(resultMsg), 100);
             console.log(resultMsg);
         }
