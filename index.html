@@ -2050,7 +2050,7 @@ const response = await fetch(this.config.googleSheetUrl + '?t=' + new Date().get
 
 async importFromGoogleSheet(isAutomatic = false) {
     if (!isAutomatic) {
-        this.showInfoModal("กำลังนำเข้า...", "ระบบกำลังดึงบาร์โค้ดและต้นทุนที่ถูกต้องจาก Google Sheets...");
+        this.showInfoModal("กำลังนำเข้า...", "ระบบกำลังดึงข้อมูล บาร์โค้ด ต้นทุน และระดับราคาที่ 3 จาก Google Sheets...");
     }
 
     try {
@@ -2121,9 +2121,15 @@ async importFromGoogleSheet(isAutomatic = false) {
             const name = String(getVal(row, 'ชื่อการค้า', 'ชื่อสินค้า') || 'ไม่มีชื่อ').trim();
             const pricingUnits = [];
             
-            // ✨ [เพิ่มใหม่] ดึงต้นทุนหลัก
             let basePrice = parseNumberValue(getVal(row, 'ราคา1', 'ราคา'));
-            let baseCost = parseNumberValue(getVal(row, 'ต้นทุน', 'ทุน', 'ราคาต้นทุน', 'ต้นทุน/หน่วย', 'ต้นทุน1'));
+
+            // 🎯 ต้องดึง "ชื่อหน่วยที่ 1" มาก่อน เพื่อเอาไปสร้างเป็นชื่อคอลัมน์ต้นทุน
+            const unit1 = String(getVal(row, 'หน่วยนับที่1', 'หน่วย1') || 'ชิ้น').trim();
+            
+            // ✨ [อัปเดตใหม่] สร้างชื่อคอลัมน์ เช่น "หน่วย/กล่อง", "หน่วย/เม็ด"
+            const costCol1 = "หน่วย/" + unit1;
+            // ดึงต้นทุนโดยใช้ชื่อคอลัมน์ที่สร้างขึ้น (ถ้าไม่มี ก็เผื่อชื่ออื่นๆ ไว้ให้)
+            let baseCost = parseNumberValue(getVal(row, costCol1, 'ต้นทุน', 'ทุน', 'ราคาต้นทุน', 'ต้นทุน/หน่วย', 'ต้นทุน1'));
 
             let allTiers = [];
             ['ระดับที่1', 'ระดับที่2', 'ระดับที่3'].forEach(col => {
@@ -2140,63 +2146,68 @@ async importFromGoogleSheet(isAutomatic = false) {
             if (allTiers.length === 0 && basePrice <= 0) allTiers.push({ quantity: 1, price: 0 });
             allTiers.sort((a, b) => b.quantity - a.quantity);
 
-            // 🎯 จัดการ "หน่วยที่ 1"
-            const unit1 = String(getVal(row, 'หน่วยนับที่1', 'หน่วย1') || 'ชิ้น').trim();
-            
+            // 🎯 จัดการ "หน่วยที่ 1" (ทำต่อจากด้านบน)
             let rawBarcode1 = getVal(row, 'บาร์โค้ดในหน่วยนับ1', 'บาร์โค้ดในหน่วยนับที่1', 'บาร์โค้ด1', 'บาร์โค้ด');
             const barcode1 = String(rawBarcode1 || finalCode).trim(); 
             
             pricingUnits.push({
                 unitName: unit1,
                 barcode: barcode1, 
-                cost: baseCost, // ✨ อัปเดตต้นทุน
+                cost: baseCost, // ✨ อัปเดตต้นทุนหลักที่ดึงมา
                 conversionFactor: 1,
                 defaultPrice: basePrice,
                 priceTiers: allTiers
             });
 
             // 🎯 จัดการ "หน่วยที่ 2"
-            const unit2 = String(getVal(row, 'หน่วยนับที่2', 'หน่วย2') || '').trim();
+            const unit2 = String(getVal(row, 'หน่วยนับที่2', 'หน่วย 2', 'หน่วย2') || '').trim();
             if (unit2) {
                 const factor2 = parseNumberValue(getVal(row, 'ค่าการแปลงหน่วยที่2', 'ตัวคูณ2')) || 1;
-                const explicitPrice2 = parseNumberValue(getVal(row, 'ราคา2'));
+                const explicitPrice2 = parseNumberValue(getVal(row, 'ราคา 2', 'ราคา2'));
                 const price2 = explicitPrice2 > 0 ? explicitPrice2 : (basePrice * factor2);
                 
-                // ✨ [เพิ่มใหม่] คำนวณต้นทุนให้หน่วย 2
-                const explicitCost2 = parseNumberValue(getVal(row, 'ต้นทุน2', 'ทุน2'));
+                // ✨ [อัปเดตใหม่] ดึงต้นทุนของหน่วย 2 แบบไดนามิก (เช่น "หน่วย/ลัง")
+                const costCol2 = "หน่วย/" + unit2;
+                const explicitCost2 = parseNumberValue(getVal(row, costCol2, 'ต้นทุน 2', 'ต้นทุน2', 'ทุน2'));
                 const cost2 = explicitCost2 > 0 ? explicitCost2 : (baseCost * factor2);
 
-                let rawBarcode2 = getVal(row, 'บาร์โค้ดในหน่วยนับ2', 'บาร์โค้ดในหน่วยนับที่2', 'บาร์โค้ด2');
+                let rawBarcode2 = getVal(row, 'บาร์โค้ดในหน่วยนับ2', 'บาร์โค้ดในหน่วยนับที่2', 'บาร์โค้ด 2', 'บาร์โค้ด2');
                 const barcode2 = String(rawBarcode2 || '').trim();
 
                 pricingUnits.push({
                     unitName: unit2,
                     barcode: barcode2, 
-                    cost: cost2, // ✨ อัปเดตต้นทุน
+                    cost: cost2, 
                     conversionFactor: factor2,
                     defaultPrice: price2,
                     priceTiers: [{ quantity: 1, price: price2 }]
                 });
             }
 
-            // 🎯 จัดการ "หน่วยที่ 3"
-            const unit3 = String(getVal(row, 'หน่วยนับที่3', 'หน่วย3') || '').trim();
+            // 🎯 จัดการ "หน่วยที่ 3" (✨ อัปเดตการดึง "ราคา 3" และ "หน่วย 3")
+            const unit3Raw = getVal(row, 'หน่วย 3', 'หน่วยนับที่3', 'หน่วย3');
+            const unit3 = String(unit3Raw || '').trim();
+            
             if (unit3) {
                 const factor3 = parseNumberValue(getVal(row, 'ค่าการแปลงหน่วยที่3', 'ตัวคูณ3')) || 1;
-                const explicitPrice3 = parseNumberValue(getVal(row, 'ราคา3'));
+                
+                // ✨ ดึงราคา 3 (รองรับการเว้นวรรค)
+                const explicitPrice3Raw = getVal(row, 'ราคา 3', 'ราคา3');
+                const explicitPrice3 = parseNumberValue(explicitPrice3Raw);
                 const price3 = explicitPrice3 > 0 ? explicitPrice3 : (basePrice * factor3);
                 
-                // ✨ [เพิ่มใหม่] คำนวณต้นทุนให้หน่วย 3
-                const explicitCost3 = parseNumberValue(getVal(row, 'ต้นทุน3', 'ทุน3'));
+                // ✨ ดึงต้นทุนของหน่วย 3 แบบไดนามิก
+                const costCol3 = "หน่วย/" + unit3;
+                const explicitCost3 = parseNumberValue(getVal(row, costCol3, 'ต้นทุน 3', 'ต้นทุน3', 'ทุน3'));
                 const cost3 = explicitCost3 > 0 ? explicitCost3 : (baseCost * factor3);
 
-                let rawBarcode3 = getVal(row, 'บาร์โค้ดในหน่วยนับ3', 'บาร์โค้ดในหน่วยนับที่3', 'บาร์โค้ด3');
+                let rawBarcode3 = getVal(row, 'บาร์โค้ดในหน่วยนับ3', 'บาร์โค้ดในหน่วยนับที่3', 'บาร์โค้ด 3', 'บาร์โค้ด3');
                 const barcode3 = String(rawBarcode3 || '').trim();
 
                 pricingUnits.push({
                     unitName: unit3,
                     barcode: barcode3,
-                    cost: cost3, // ✨ อัปเดตต้นทุน
+                    cost: cost3, 
                     conversionFactor: factor3,
                     defaultPrice: price3,
                     priceTiers: [{ quantity: 1, price: price3 }]
@@ -2220,7 +2231,7 @@ async importFromGoogleSheet(isAutomatic = false) {
                     productName: existing.data.productName,
                     baseUnit: existing.data.baseUnit,
                     mainSellingUnit: existing.data.mainSellingUnit,
-                    cost: existing.data.cost, // ✨ เพิ่มเช็กต้นทุนด้วย
+                    cost: existing.data.cost,
                     pricingUnits: existing.data.pricingUnits 
                 });
                 
@@ -2228,7 +2239,7 @@ async importFromGoogleSheet(isAutomatic = false) {
                     productName: productData.productName,
                     baseUnit: productData.baseUnit,
                     mainSellingUnit: productData.mainSellingUnit,
-                    cost: productData.cost, // ✨ เพิ่มเช็กต้นทุนด้วย
+                    cost: productData.cost, 
                     pricingUnits: productData.pricingUnits
                 });
 
@@ -2260,7 +2271,7 @@ async importFromGoogleSheet(isAutomatic = false) {
         if (!isAutomatic) {
             document.getElementById('info-modal').style.display = 'none';
             this.setActiveOverlay(null);
-            const resultMsg = `อัปเดตบาร์โค้ดและต้นทุนสำเร็จ!\nเพิ่มใหม่: ${newCount}\nอัปเดต: ${updateCount}\nข้าม: ${skipCount}`;
+            const resultMsg = `อัปเดตข้อมูลสำเร็จ!\n(อัปเดต ราคา 3 และ หน่วย 3 เรียบร้อย)\nเพิ่มใหม่: ${newCount}\nอัปเดต: ${updateCount}\nข้าม: ${skipCount}`;
             setTimeout(() => alert(resultMsg), 100);
         }
     } catch (e) {
