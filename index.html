@@ -5377,6 +5377,45 @@ document.addEventListener("DOMContentLoaded", function() {
     }, 2000); 
 });
 </script>
+    <script>
+document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+        const app = window.POS_APP;
+        if (!app) return;
+
+        console.log("Applying Payment Modal Isolate Patch...");
+
+        // 1. ระงับการทำงานของระบบค้นหาและคีย์ลัดพื้นหลัง เมื่อเปิดหน้าชำระเงิน
+        const originalShowPayment = app.showPaymentModal;
+        app.showPaymentModal = function() {
+            originalShowPayment.apply(this, arguments);
+            // แจ้งระบบว่าหน้าต่างชำระเงิน (Overlay) ถูกเปิดอยู่ เพื่อบล็อกคีย์ลัด
+            this.state.activeOverlay = 'payment'; 
+        };
+
+        const originalHidePayment = app.hidePaymentModal;
+        app.hidePaymentModal = function() {
+            originalHidePayment.apply(this, arguments);
+            // คืนสถานะเมื่อปิดหน้าชำระเงิน
+            if (this.state.activeOverlay === 'payment') {
+                this.state.activeOverlay = null; 
+            }
+        };
+
+        // 2. ป้องกันไม่ให้การกดปุ่มใดๆ ในช่อง "รับเงินมา" ทะลุไปถึงหน้าจอหลัก
+        const cashInput = document.getElementById('cash-received-input');
+        if (cashInput) {
+            cashInput.addEventListener('keydown', function(e) {
+                // ปล่อยให้ปุ่ม Enter และ Escape ทำงานได้ปกติ
+                // ส่วนปุ่มอื่นๆ เช่น ตัวอักษร ลูกศร หรือสัญลักษณ์ จะถูกบล็อกไม่ให้ทะลุออกไป
+                if (e.key !== 'Escape' && e.key !== 'Enter') {
+                    e.stopPropagation();
+                }
+            });
+        }
+    }, 1500); // หน่วงเวลารอให้ระบบหลักโหลดครบก่อน
+});
+</script>
 </body></html>
 
 <script>
