@@ -5416,6 +5416,58 @@ document.addEventListener("DOMContentLoaded", function() {
     }, 1500); // หน่วงเวลารอให้ระบบหลักโหลดครบก่อน
 });
 </script>
+    <script>
+document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+        const app = window.POS_APP;
+        if (!app) return;
+
+        console.log("Applying Strict Payment Focus Patch...");
+
+        const cashInput = document.getElementById('cash-received-input');
+        const confirmBtn = document.getElementById('confirm-sale-btn');
+        const cancelBtn = document.getElementById('cancel-payment-btn');
+
+        if (cashInput) {
+            // 1. ดึงเคอร์เซอร์กลับมาเสมอเมื่อคลิกที่พื้นที่อื่นๆ ในหน้าชำระเงิน
+            document.addEventListener('click', function(e) {
+                if (app.state.activeOverlay === 'payment') {
+                    // อนุญาตให้คลิกปุ่มได้ แต่ถ้าคลิกที่ว่างๆ ให้ดึงโฟกัสกลับช่องกรอกเงิน
+                    if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                        cashInput.focus();
+                    }
+                }
+            });
+
+            // 2. ดักจับการพิมพ์ตัวเลข เผื่อเคอร์เซอร์หลุดไปที่อื่น
+            document.addEventListener('keydown', function(e) {
+                if (app.state.activeOverlay === 'payment') {
+                    // ถ้ายอดพอแล้ว ระบบเดิมจะส่งโฟกัสไปที่ปุ่มยืนยัน ถ้าผู้ใช้กด Enter ให้ปล่อยผ่าน
+                    if (e.key === 'Enter') return; 
+
+                    const isButtonFocused = (document.activeElement === confirmBtn || document.activeElement === cancelBtn);
+                    
+                    if (document.activeElement !== cashInput && !isButtonFocused) {
+                        // ถ้าพิมพ์ตัวเลข หรือ จุดทศนิยม หรือ ลบ (Backspace) ให้ดึงกลับมาช่องใส่เงิน
+                        if (/^[0-9.]$/.test(e.key) || e.key === 'Backspace') {
+                            cashInput.focus();
+                        }
+                    }
+                }
+            }, true); // ใช้ true เพื่อดักจับตั้งแต่รอบ Capture Phase ป้องกันการทำงานแทรกซ้อน
+
+            // 3. ป้องกันการกด Tab เพื่อไม่ให้เคอร์เซอร์หลุดออกไปนอกหน้าต่าง
+            cashInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    // ถ้าพยายามกด Tab ให้วนไปที่ปุ่มตกลงแทน
+                    if (confirmBtn) confirmBtn.focus();
+                }
+            });
+        }
+    }, 2000); // หน่วงเวลา 2 วินาทีเพื่อให้ชัวร์ว่า UI โหลดครบแล้ว
+});
+</script>
 </body></html>
 
 <script>
